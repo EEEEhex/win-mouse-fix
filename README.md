@@ -8,9 +8,9 @@
 
 <br>
 
-Windows 版 [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix), 实现了mac-mouse-fix的几个常用功能.
+Windows版 [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix), 简易地实现了mac-mouse-fix的几个常用功能.
 ## 简介
-Win Mouse Fix 是一个为 Windows 系统设计的鼠标增强工具, 允许你通过按住鼠标侧键并移动鼠标来执行各种系统操作, 类似于触摸板手势。
+Win Mouse Fix 是一个为 Windows 系统设计的鼠标增强工具, 允许你通过按住鼠标侧键并移动鼠标来执行各种系统操作, 本项目本质上是通过模拟按键, 非模拟触摸板.
 
 ### 核心功能
 
