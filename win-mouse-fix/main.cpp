@@ -37,6 +37,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         return 0;
     }
+
+    // 设置工作目录
+    char path[MAX_PATH] = { 0 }; // 获取当前进程模块完整路径（含exe文件名）
+    DWORD len = GetModuleFileNameA(NULL, path, MAX_PATH);
+    if (len != 0) {
+        std::string fullPath(path);
+        size_t pos = fullPath.find_last_of("\\/");
+        if (pos != std::string::npos) {
+            std::string dir = fullPath.substr(0, pos);
+            if (!dir.empty()) {
+                SetCurrentDirectoryA(dir.c_str());
+            }
+        }
+    }
     
     // 创建核心组件
     WindowsActions actions;
