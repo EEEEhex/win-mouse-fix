@@ -1,0 +1,35 @@
+{
+  "gestures": [
+    {
+      "triggerButton": "BUTTON_4",
+      "gestureType": "SWIPE_UP",
+      "actionType": "TASK_VIEW",
+      "threshold": 60
+    },
+    {
+      "triggerButton": "BUTTON_4",
+      "gestureType": "SWIPE_LEFT",
+      "actionType": "SWITCH_DESKTOP_RIGHT",
+      "threshold": 60
+    },
+    {
+      "triggerButton": "BUTTON_4",
+      "gestureType": "SWIPE_RIGHT",
+      "actionType": "SWITCH_DESKTOP_LEFT",
+      "threshold": 60
+    },
+    {
+      "triggerButton": "BUTTON_4",
+      "gestureType": "SWIPE_DOWN",
+      "actionType": "SHOW_DESKTOP",
+      "threshold": 60
+    },
+    {
+      "triggerButton": "BUTTON_5",
+      "gestureType": "TWO_FINGER_SCROLL",
+      "actionType": "SCROLL_SIMULATION",
+      "threshold": 0
+    }
+  ]
+}
+
