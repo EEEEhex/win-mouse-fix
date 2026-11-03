@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion>
+    <OutDir>$(MSBuildThisFileDirectory)x64\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <WarningLevel>Level4</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)Shared\Contracts;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;WMF_SDK_VERSION=&quot;10.0.28000.0&quot;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)Shared\Contracts\NativeApi.h"><Link>Contracts\NativeApi.h</Link></ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)Shared\Contracts\ContentDragApi.h"><Link>Contracts\ContentDragApi.h</Link></ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)Shared\Contracts\ProductApi.h"><Link>Contracts\ProductApi.h</Link></ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)Shared\Contracts\WheelApi.h"><Link>Contracts\WheelApi.h</Link></ClInclude>
+  </ItemGroup>
+  <Target Name="RequireNativeX64" BeforeTargets="PrepareForBuild" Condition="'$(Platform)' != 'x64'">
+    <Error Text="The native gesture validation pipeline currently supports x64 only. Select the x64 solution platform." />
+  </Target>
+</Project>

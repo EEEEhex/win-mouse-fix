@@ -1,0 +1,56 @@
+<UserControl
+    x:Class="WinMouseFix.Settings.Controls.BindingEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Spacing="16">
+        <Border Style="{StaticResource CardBorderStyle}" Padding="18">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border Width="32" Height="32" CornerRadius="8" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><FontIcon Glyph="&#xE962;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/></Border>
+                    <TextBlock x:Name="TriggerHeading" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <ComboBox x:Name="ButtonChoice" MinWidth="0" HorizontalAlignment="Stretch"/>
+                    <Button x:Name="Identify" Grid.Column="1" MinWidth="160" VerticalAlignment="Bottom"/>
+                </Grid>
+                <TextBlock x:Name="IdentifyNote" FontSize="12" Opacity="0.65" TextWrapping="Wrap"/>
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="ModifiersHeading" FontSize="14"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <CheckBox x:Name="ShiftModifier" Content="Shift" MinWidth="0"/>
+                        <CheckBox x:Name="CtrlModifier" Grid.Column="1" Content="Ctrl" MinWidth="0"/>
+                        <CheckBox x:Name="AltModifier" Grid.Column="2" Content="Alt" MinWidth="0"/>
+                        <CheckBox x:Name="WinModifier" Grid.Column="3" Content="Win" MinWidth="0"/>
+                    </Grid>
+                </StackPanel>
+                <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+                <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.2*"/></Grid.ColumnDefinitions>
+                    <ComboBox x:Name="TriggerChoice" MinWidth="0" HorizontalAlignment="Stretch"/>
+                    <TextBlock x:Name="TriggerNote" Grid.Column="1" FontSize="12" Opacity="0.65" TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="0,0,0,7"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+        <Border Style="{StaticResource CardBorderStyle}" Padding="18">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border Width="32" Height="32" CornerRadius="8" Background="{ThemeResource SubtleFillColorSecondaryBrush}"><FontIcon Glyph="&#xE945;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/></Border>
+                    <TextBlock x:Name="ActionHeading" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.2*"/></Grid.ColumnDefinitions>
+                    <ComboBox x:Name="ActionChoice" MinWidth="0" HorizontalAlignment="Stretch" SelectionChanged="ActionChanged"/>
+                    <TextBlock x:Name="ActionNote" Grid.Column="1" FontSize="12" Opacity="0.65" TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="0,0,0,5"/>
+                </Grid>
+                <Grid x:Name="ShortcutPanel" ColumnSpacing="12" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBox x:Name="KeysBox" IsReadOnly="True"/>
+                    <Button x:Name="RecordShortcut" Grid.Column="1" VerticalAlignment="Bottom" Click="RecordShortcutClicked"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+        <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error"/>
+    </StackPanel>
+</UserControl>

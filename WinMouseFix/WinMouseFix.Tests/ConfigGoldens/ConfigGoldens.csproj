@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="..\..\Shared\Configuration\ProductConfiguration.cs" Link="ProductConfiguration.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="..\..\Shared\Configuration\ProductProtocol.cs" Link="ProductProtocol.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\WinMouseFix.Settings\Resources\UiText.cs" Link="UiText.cs" />
+    <EmbeddedResource Include="..\..\WinMouseFix.Settings\Resources\Strings.*.json"><WithCulture>false</WithCulture></EmbeddedResource>
+    <Compile Include="..\..\WinMouseFix.Settings\Services\IHostSession.cs" Link="IHostSession.cs" />
+    <Compile Include="..\..\WinMouseFix.Settings\Services\HostClient.cs" Link="HostClient.cs" />
+    <Compile Include="..\..\WinMouseFix.Settings\Services\SettingsEndpoint.cs" Link="SettingsEndpoint.cs" />
+    <Compile Include="..\..\WinMouseFix.Settings\Services\FakeHostSession.cs" Link="FakeHostSession.cs" />
+    <Compile Include="..\..\WinMouseFix.Settings\ViewModels\SettingsModel.cs" Link="SettingsModel.cs" />
+  </ItemGroup>
+</Project>
