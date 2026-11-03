@@ -32,7 +32,7 @@ Requires **Windows 11 x64**.
 3. Run `WinMouseFix.Host.exe`. Click its system tray icon to open Settings, then turn on **General → Enable Win Mouse Fix**.
 4. Optionally enable **General → Start when you sign in** to launch the app when you sign in to Windows.
 
-No installer is required. Closing Settings keeps Win Mouse Fix running in the system tray.
+No installer is required. The portable release does not register itself in Windows Installed apps. Closing Settings keeps Win Mouse Fix running in the system tray.
 
 ## Uninstallation
 

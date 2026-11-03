@@ -93,7 +93,10 @@ public sealed partial class MainWindow
         fake.AnnounceUpdate(notified); await Task.Delay(250);
         if (_updateDialog is null || fake.Status.Update.NotificationPending) throw new InvalidOperationException("Automatic update reminder was not shown and acknowledged.");
         await CaptureAsync(FindVisual<FrameworkElement>(_updateDialog,item => item.Name == "BackgroundElement") ?? _updateDialog,Path.Combine(directory,"update-automatic.png"));
-        _updateDialog.Hide(); await Task.Delay(150); if (_updateDialog is not null) throw new InvalidOperationException("Automatic reminder reopened after acknowledgement.");
+        var closingReminder = _updateDialog; closingReminder.Hide();
+        var closeDeadline = DateTime.UtcNow.AddSeconds(3);
+        while (ReferenceEquals(_updateDialog,closingReminder) && DateTime.UtcNow < closeDeadline) await Task.Delay(25);
+        if (_updateDialog is not null) throw new InvalidOperationException("Automatic reminder failed to close or reopened after acknowledgement.");
         fake.NextUpdate = new() { State="current",Version="2.0.0" };
     }
 }

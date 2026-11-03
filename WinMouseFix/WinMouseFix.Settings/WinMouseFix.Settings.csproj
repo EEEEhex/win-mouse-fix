@@ -12,10 +12,19 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>false</EnableMsixTooling>
     <WindowsPackageType>None</WindowsPackageType>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Version>2.0.0</Version>
+    <Product>Win Mouse Fix</Product>
+    <Company>EEEEhex</Company>
+    <Authors>EEEEhex</Authors>
+    <Description>Mouse gestures and settings for Win Mouse Fix.</Description>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <ApplicationIcon>..\..\wmf.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -38,28 +47,12 @@
     <Compile Include="..\Shared\Configuration\ProductProtocol.cs" Link="Configuration\ProductProtocol.cs" />
   </ItemGroup>
 
-  <!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
-  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix" />
-  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\Strings.*.json"><WithCulture>false</WithCulture></EmbeddedResource>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
   </ItemGroup>
 
-  <!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
-  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-  </PropertyGroup>
 
   <!-- Publish Properties -->
   <PropertyGroup>
@@ -74,6 +67,9 @@
       <UnpackagedXaml Include="$(TargetDir)*.xbf;$(TargetDir)$(TargetName).pri" />
     </ItemGroup>
     <Copy SourceFiles="@(UnpackagedXaml)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="RequirePortableSettingsDeployment" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(WindowsPackageType)' != 'None' or '$(EnableMsixTooling)' == 'true' or '$(GenerateAppxPackageOnBuild)' == 'true'" Text="WinMouseFix.Settings must use unpackaged, portable deployment. MSIX registration and package generation are disabled." />
   </Target>
 </Project>
 

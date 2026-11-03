@@ -32,7 +32,7 @@ Win Mouse Fix 的灵感来自 [Mac Mouse Fix](https://github.com/noah-nuebling/m
 3. 运行 `WinMouseFix.Host.exe`。单击系统托盘图标打开设置，在 **通用 → 启动 Win Mouse Fix** 中开启鼠标增强。
 4. 如果希望登录 Windows 后自动运行，可开启 **通用 → 登录 Windows 时启动**。
 
-程序无需安装器。关闭设置窗口后，Win Mouse Fix 仍会在系统托盘中运行。
+程序无需安装器，便携发行版不会将自己注册到 Windows 的“已安装的应用”列表中。关闭设置窗口后，Win Mouse Fix 仍会在系统托盘中运行。
 
 ## 卸载
 

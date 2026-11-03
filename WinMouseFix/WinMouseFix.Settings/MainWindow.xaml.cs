@@ -424,6 +424,7 @@ public sealed partial class MainWindow : Window
     private async Task HelpAsync() { await new ContentDialog { XamlRoot = Root.XamlRoot, Title = UiText.Get("使用帮助"), Content = Text(UiText.Get("在“通用”中启动增强，在“按键”中配置单击、拖动或滚轮动作。\n\n在“滚动”中调整速度和方向。需要暂停或退出时，使用系统托盘菜单。\n\n关闭设置窗口后后台继续运行；退出后台时设置窗口也会关闭。")), CloseButtonText = UiText.Get("知道了") }.ShowAsync(); }
     public async Task RunSmokeAsync(string directory) {
         if (!(_endpoint.Simulation && Model.Connected)) throw new InvalidOperationException("UI smoke requires the explicit fake session.");
+        var publicPublisher = DeploymentProbe.VerifyPortableIdentity();
         Root.RequestedTheme = ElementTheme.Light;
         foreach(var page in new[]{"general","buttons","scrolling","about"}) {
             Navigate(page); await Task.Delay(150); Root.UpdateLayout();
@@ -472,7 +473,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(previousSize); await Task.Delay(150);
         Navigate("about"); await Task.Delay(150); await CaptureAsync(Root,Path.Combine(directory,"about-english.png"));
         UiText.Language = "zh-Hans";
-        File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new { simulation = true, ok = true, pages = 4, configurationAck = true, nativeCapture = false, desktopInjection = false }));
+        File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new { simulation = true, ok = true, pages = 4, configurationAck = true, unpackaged = true, publisher = publicPublisher, nativeCapture = false, desktopInjection = false }));
     }
     private async Task CaptureAdvancedAsync(string directory,string name) {
         _advancedSettings!.IsExpanded = true; await Task.Delay(350); PageScroll.ChangeView(null,PageScroll.ScrollableHeight,null,true); await Task.Delay(150); await CaptureAsync(Root,Path.Combine(directory,name));
