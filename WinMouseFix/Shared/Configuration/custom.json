@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 42,
+  "enabled": true,
+  "startup": false,
+  "bindings": [
+    {"id":11,"button":"middle","trigger":"click","modifiers":2,"action":"shortcut","keys":[17,84]},
+    {"id":12,"button":"back","trigger":"wheel-up","modifiers":0,"action":"volume-up","keys":[]},
+    {"id":13,"button":"back","trigger":"wheel-down","modifiers":0,"action":"volume-down","keys":[]},
+    {"id":14,"button":"forward","trigger":"drag","modifiers":0,"action":"shell-gestures","keys":[]}
+  ],
+  "content": {"thresholdCounts":5.5,"mmPerCountX":-0.25,"mmPerCountY":0.125},
+  "shell": {"fingers":3,"mmPerCountX":-0.2,"mmPerCountY":0.15,"directionRatio":1.5},
+  "wheel": {"mode":"high","mmPerNotch":-12.5,"regularMilliseconds":100,"highMilliseconds":160},
+  "zoom": {"mmPerNotch":-1.5,"initialPinchMm":12},
+  "timing": {"doubleClickMs":300,"holdMs":600,"doubleClickTolerancePixels":8}
+}

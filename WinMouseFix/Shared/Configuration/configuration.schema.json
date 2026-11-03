@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winmousefix.local/schemas/configuration-v1.json",
+  "title": "WinMouseFix configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","revision","enabled","startup","bindings","content","shell","wheel","zoom","timing"],
+  "properties": {
+    "schemaVersion": {"const":1},
+    "revision": {"type":"integer","minimum":1,"maximum":9007199254740991},
+    "enabled": {"type":"boolean"},
+    "startup": {"type":"boolean"},
+    "bindings": {"type":"array","maxItems":64,"items":{"$ref":"#/$defs/binding"}},
+    "content": {
+      "type":"object","additionalProperties":false,"required":["thresholdCounts","mmPerCountX","mmPerCountY"],
+      "properties": {
+        "thresholdCounts":{"type":"number","minimum":0.000001,"maximum":1000000,"description":"Net relative mouse counts; no synthetic activation movement."},
+        "mmPerCountX":{"$ref":"#/$defs/scale"},"mmPerCountY":{"$ref":"#/$defs/scale"}
+      }
+    },
+    "shell": {
+      "type":"object","additionalProperties":false,"required":["fingers","mmPerCountX","mmPerCountY","directionRatio"],
+      "properties": {
+        "fingers":{"enum":[3,4]},"mmPerCountX":{"$ref":"#/$defs/scale"},"mmPerCountY":{"$ref":"#/$defs/scale"},
+        "directionRatio":{"type":"number","minimum":1.01,"maximum":8}
+      }
+    },
+    "wheel": {
+      "type":"object","additionalProperties":false,"required":["mode","mmPerNotch","regularMilliseconds","highMilliseconds"],
+      "properties": {
+        "mode":{"enum":["off","regular","high"]},"mmPerNotch":{"$ref":"#/$defs/scale"},
+        "regularMilliseconds":{"type":"number","minimum":10,"maximum":500},
+        "highMilliseconds":{"type":"number","minimum":10,"maximum":1000,"description":"Must also be >= regularMilliseconds; checked by both validators."}
+      }
+    },
+    "zoom": {
+      "type":"object","additionalProperties":false,"required":["mmPerNotch","initialPinchMm"],
+      "properties": {"mmPerNotch":{"$ref":"#/$defs/scale"},"initialPinchMm":{"type":"number","minimum":1,"maximum":100}}
+    },
+    "timing": {
+      "type":"object","additionalProperties":false,"required":["doubleClickMs","holdMs","doubleClickTolerancePixels"],
+      "properties": {
+        "doubleClickMs":{"type":"integer","minimum":100,"maximum":2000},
+        "holdMs":{"type":"integer","minimum":100,"maximum":5000},
+        "doubleClickTolerancePixels":{"type":"integer","minimum":0,"maximum":100}
+      }
+    }
+  },
+  "$defs": {
+    "scale": {"type":"number","anyOf":[{"minimum":-100,"maximum":-0.000001},{"minimum":0.000001,"maximum":100}]},
+    "binding": {
+      "type":"object","additionalProperties":false,"required":["id","button","trigger","modifiers","action","keys"],
+      "properties": {
+        "id":{"type":"integer","minimum":1,"maximum":4294967295},
+        "button":{"enum":["middle","back","forward"]},
+        "trigger":{"enum":["click","double-click","hold","drag","wheel","wheel-up","wheel-down"]},
+        "modifiers":{"type":"integer","minimum":0,"maximum":15,"description":"Shift=1, Control=2, Alt=4, Windows=8."},
+        "action":{"enum":["back","forward","middle-click","content-drag","shell-gestures","native-zoom","shortcut","volume-up","volume-down","mute","play-pause","previous-track","next-track"]},
+        "keys":{"type":"array","maxItems":8,"uniqueItems":true,"items":{"type":"integer","minimum":8,"maximum":254}}
+      },
+      "allOf":[
+        {"if":{"properties":{"action":{"const":"shortcut"}}},"then":{"properties":{"keys":{"minItems":1}}},"else":{"properties":{"keys":{"maxItems":0}}}},
+        {"if":{"properties":{"trigger":{"const":"drag"}}},"then":{"properties":{"action":{"enum":["content-drag","shell-gestures"]}}}},
+        {"if":{"properties":{"trigger":{"const":"wheel"}}},"then":{"properties":{"action":{"const":"native-zoom"}}}},
+        {"if":{"properties":{"trigger":{"enum":["click","double-click","hold","wheel-up","wheel-down"]}}},"then":{"properties":{"action":{"enum":["back","forward","middle-click","shortcut","volume-up","volume-down","mute","play-pause","previous-track","next-track"]}}}}
+      ]
+    }
+  }
+}

@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="头文件" />
+    <Filter Include="源文件" />
+    <Filter Include="资源文件" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="WinMouseFix.Host.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClCompile Include="WinMouseFix.Host.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ResourceCompile Include="WinMouseFix.Host.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
+    <Image Include="small.ico">
+      <Filter>资源文件</Filter>
+    </Image>
+    <Image Include="WinMouseFix.Host.ico">
+      <Filter>资源文件</Filter>
+    </Image>
+    <ClCompile Include="NativeModules.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="InputRuntime.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Report.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ContentEngine.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductEngine.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductRuntime.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductConfig.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConfigStore.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ConfigCoordinator.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="StartupRegistration.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductService.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductLog.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="TimingMetrics.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="CapabilityEvidence.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductProbeMode.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductPaths.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductSimulation.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ResidentTray.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ResidentMode.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductEnvironment.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ControlPipe.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ProductProtocol.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="JsonSupport.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ContentReport.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ContentRuntime.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ContentMode.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClInclude Include="NativeModules.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DiagnosticText.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="InputRuntime.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SpscRing.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Evidence.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Report.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DiagnosticHotkeys.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentEngine.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductEngine.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductRuntime.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductConfig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfigStore.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfigCoordinator.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="StartupRegistration.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductService.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductLog.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="TimingMetrics.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CapabilityEvidence.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductProbeMode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductPaths.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductSimulation.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ResidentTray.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ResidentMode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductEnvironment.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ControlPipe.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductProtocol.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="JsonSupport.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ProductInputBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentInputBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentReport.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentRuntime.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentMode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentControls.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ContentTarget.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="InputOwner.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Contracts\NativeApi.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Contracts\ContentDragApi.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Contracts\ProductApi.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Contracts\WheelApi.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+<ItemGroup><ClCompile Include="UpdateService.cpp"><Filter>源文件</Filter></ClCompile><ClInclude Include="UpdateService.h"><Filter>头文件</Filter></ClInclude><ClInclude Include="ProductVersion.h"><Filter>头文件</Filter></ClInclude></ItemGroup></Project>

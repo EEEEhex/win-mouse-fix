@@ -1,0 +1,57 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37314.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinMouseFix.Core", "WinMouseFix.Core\WinMouseFix.Core.vcxproj", "{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinMouseFix.Platform.Win32", "WinMouseFix.Platform.Win32\WinMouseFix.Platform.Win32.vcxproj", "{940E7420-7150-4D44-952F-9B207BE30ED7}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinMouseFix.Host", "WinMouseFix.Host\WinMouseFix.Host.vcxproj", "{4448797F-479D-468F-BAC2-7DE52BA9B579}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinMouseFix.Tests", "WinMouseFix.Tests\WinMouseFix.Tests.vcxproj", "{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NativeReceiver", "WinMouseFix.Tests\NativeReceiver.vcxproj", "{A683C91B-1D5F-4F72-91AA-78C73B27DC86}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinMouseFix.Settings", "WinMouseFix.Settings\WinMouseFix.Settings.csproj", "{2796AD5A-C92D-4357-B007-1E473949C7D6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Debug|x64.ActiveCfg = Debug|x64
+		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Debug|x64.Build.0 = Debug|x64
+		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Release|x64.ActiveCfg = Release|x64
+		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Release|x64.Build.0 = Release|x64
+		{940E7420-7150-4D44-952F-9B207BE30ED7}.Debug|x64.ActiveCfg = Debug|x64
+		{940E7420-7150-4D44-952F-9B207BE30ED7}.Debug|x64.Build.0 = Debug|x64
+		{940E7420-7150-4D44-952F-9B207BE30ED7}.Release|x64.ActiveCfg = Release|x64
+		{940E7420-7150-4D44-952F-9B207BE30ED7}.Release|x64.Build.0 = Release|x64
+		{4448797F-479D-468F-BAC2-7DE52BA9B579}.Debug|x64.ActiveCfg = Debug|x64
+		{4448797F-479D-468F-BAC2-7DE52BA9B579}.Debug|x64.Build.0 = Debug|x64
+		{4448797F-479D-468F-BAC2-7DE52BA9B579}.Release|x64.ActiveCfg = Release|x64
+		{4448797F-479D-468F-BAC2-7DE52BA9B579}.Release|x64.Build.0 = Release|x64
+		{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}.Debug|x64.ActiveCfg = Debug|x64
+		{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}.Debug|x64.Build.0 = Debug|x64
+		{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}.Release|x64.ActiveCfg = Release|x64
+		{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}.Release|x64.Build.0 = Release|x64
+		{A683C91B-1D5F-4F72-91AA-78C73B27DC86}.Debug|x64.ActiveCfg = Debug|x64
+		{A683C91B-1D5F-4F72-91AA-78C73B27DC86}.Debug|x64.Build.0 = Debug|x64
+		{A683C91B-1D5F-4F72-91AA-78C73B27DC86}.Release|x64.ActiveCfg = Release|x64
+		{A683C91B-1D5F-4F72-91AA-78C73B27DC86}.Release|x64.Build.0 = Release|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Debug|x64.ActiveCfg = Debug|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Debug|x64.Build.0 = Debug|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Debug|x64.Deploy.0 = Debug|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Release|x64.ActiveCfg = Release|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Release|x64.Build.0 = Release|x64
+		{2796AD5A-C92D-4357-B007-1E473949C7D6}.Release|x64.Deploy.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FFD08B85-90DF-40BB-B770-20AF9F4A4A21}
+	EndGlobalSection
+EndGlobal
