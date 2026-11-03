@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{4448797f-479d-468f-bac2-7de52ba9b579}</ProjectGuid>
+    <RootNamespace>WinMouseFixHost</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="WinMouseFix.Host.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="WinMouseFix.Host.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="WinMouseFix.Host.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="small.ico" />
+    <Image Include="WinMouseFix.Host.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinMouseFix.Core\WinMouseFix.Core.vcxproj">
+      <Project>{f8132b42-bfe0-4035-abad-b9ff4e01b8e8}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\WinMouseFix.Platform.Win32\WinMouseFix.Platform.Win32.vcxproj">
+      <Project>{940e7420-7150-4d44-952f-9b207be30ed7}</Project>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Import Project="..\Common.props" />
+  <ItemGroup>
+    <ClCompile Include="NativeModules.cpp" />
+    <ClCompile Include="InputRuntime.cpp" />
+    <ClCompile Include="Report.cpp" />
+    <ClCompile Include="ContentEngine.cpp" />
+    <ClCompile Include="ProductEngine.cpp" />
+    <ClCompile Include="ProductRuntime.cpp" />
+    <ClCompile Include="ProductConfig.cpp" />
+    <ClCompile Include="ConfigStore.cpp" />
+    <ClCompile Include="ConfigCoordinator.cpp" />
+    <ClCompile Include="StartupRegistration.cpp" />
+    <ClCompile Include="ProductService.cpp" />
+    <ClCompile Include="ProductLog.cpp" />
+    <ClCompile Include="TimingMetrics.cpp" />
+    <ClCompile Include="CapabilityEvidence.cpp" />
+    <ClCompile Include="ProductProbeMode.cpp" />
+    <ClCompile Include="ProductPaths.cpp" />
+    <ClCompile Include="ProductSimulation.cpp" />
+    <ClCompile Include="ResidentTray.cpp" />
+    <ClCompile Include="ResidentMode.cpp" /><ClCompile Include="UpdateService.cpp" />
+    <ClCompile Include="ProductEnvironment.cpp" />
+    <ClCompile Include="ControlPipe.cpp" />
+    <ClCompile Include="ProductProtocol.cpp" />
+    <ClCompile Include="JsonSupport.cpp" />
+    <ClCompile Include="ContentReport.cpp" />
+    <ClCompile Include="ContentRuntime.cpp" />
+    <ClCompile Include="ContentMode.cpp" />
+  </ItemGroup>
+  <ItemDefinitionGroup><Link><DelayLoadDLLs>WinMouseFix.Core.dll;WinMouseFix.Platform.Win32.dll;%(DelayLoadDLLs)</DelayLoadDLLs><AdditionalDependencies>winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;wtsapi32.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup><Manifest><AdditionalManifestFiles>$(ProjectDir)app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest></ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="NativeModules.h" />
+    <ClInclude Include="DiagnosticText.h" />
+    <ClInclude Include="InputRuntime.h" />
+    <ClInclude Include="SpscRing.h" />
+    <ClInclude Include="Evidence.h" />
+    <ClInclude Include="Report.h" />
+    <ClInclude Include="DiagnosticHotkeys.h" />
+    <ClInclude Include="ContentEngine.h" />
+    <ClInclude Include="ProductEngine.h" />
+    <ClInclude Include="ProductRuntime.h" />
+    <ClInclude Include="ProductConfig.h" />
+    <ClInclude Include="ConfigStore.h" />
+    <ClInclude Include="ConfigCoordinator.h" />
+    <ClInclude Include="StartupRegistration.h" />
+    <ClInclude Include="ProductService.h" />
+    <ClInclude Include="ProductLog.h" />
+    <ClInclude Include="TimingMetrics.h" />
+    <ClInclude Include="CapabilityEvidence.h" />
+    <ClInclude Include="ProductProbeMode.h" />
+    <ClInclude Include="ProductPaths.h" />
+    <ClInclude Include="ProductSimulation.h" />
+    <ClInclude Include="ResidentTray.h" />
+    <ClInclude Include="ResidentMode.h" /><ClInclude Include="UpdateService.h" /><ClInclude Include="ProductVersion.h" />
+    <ClInclude Include="ProductEnvironment.h" />
+    <ClInclude Include="ControlPipe.h" />
+    <ClInclude Include="ProductProtocol.h" />
+    <ClInclude Include="JsonSupport.h" />
+    <ClInclude Include="ProductInputBuffer.h" />
+    <ClInclude Include="ContentInputBuffer.h" />
+    <ClInclude Include="ContentReport.h" />
+    <ClInclude Include="ContentRuntime.h" />
+    <ClInclude Include="ContentMode.h" />
+    <ClInclude Include="ContentControls.h" />
+    <ClInclude Include="ContentTarget.h" />
+    <ClInclude Include="InputOwner.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
+
+
+
+

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals"><ProjectGuid>{CBF33020-394E-4C5C-A37A-0137EC6C4BB1}</ProjectGuid><WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries><UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="..\Common.props" />
+  <ItemDefinitionGroup>
+    <ClCompile><PreprocessorDefinitions>WINMOUSEFIXPLATFORMWIN32_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <Link><SubSystem>Console</SubSystem><DelayLoadDLLs>WinMouseFix.Core.dll</DelayLoadDLLs><AdditionalDependencies>winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;advapi32.lib;version.lib;wtsapi32.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link>
+    <Manifest><AdditionalManifestFiles>$(ProjectDir)..\WinMouseFix.Host\app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Tests.cpp" />
+    <ClCompile Include="RuntimeTests.cpp" />
+    <ClCompile Include="ContentDragTests.cpp" />
+    <ClCompile Include="CaptureTests.cpp" />
+    <ClCompile Include="ContentRuntimeTests.cpp" />
+    <ClCompile Include="ProductTests.cpp" />
+    <ClCompile Include="DiscreteTests.cpp" />
+    <ClCompile Include="ProductEngineTests.cpp" />
+    <ClCompile Include="WheelTests.cpp" />
+    <ClCompile Include="ProductLogTests.cpp" />
+    <ClCompile Include="ProductDeliveryTests.cpp" /><ClCompile Include="UpdateTests.cpp" /><ClCompile Include="..\WinMouseFix.Host\UpdateService.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\CapabilityEvidence.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ResidentTray.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\TimingMetrics.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductLog.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductSimulation.cpp" />
+    <ClCompile Include="ProductRuntimeTests.cpp" />
+    <ClCompile Include="ProductConfigTests.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductConfig.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ConfigStore.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ConfigCoordinator.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\StartupRegistration.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductService.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductEnvironment.cpp" />
+    <ClCompile Include="ControlPipeTests.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ControlPipe.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductProtocol.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\JsonSupport.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductEngine.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ProductRuntime.cpp" />
+    <ClCompile Include="..\WinMouseFix.Platform.Win32\DiscreteActions.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ContentEngine.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ContentReport.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ContentRuntime.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\ContentMode.cpp" />
+    <ClCompile Include="..\WinMouseFix.Platform.Win32\MouseCapture.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\InputRuntime.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\Report.cpp" />
+    <ClCompile Include="..\WinMouseFix.Platform.Win32\DeviceSession.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\NativeModules.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinMouseFix.Core\WinMouseFix.Core.vcxproj"><Project>{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}</Project></ProjectReference>
+    <ProjectReference Include="..\WinMouseFix.Platform.Win32\WinMouseFix.Platform.Win32.vcxproj"><Project>{940E7420-7150-4D44-952F-9B207BE30ED7}</Project><LinkLibraryDependencies>false</LinkLibraryDependencies></ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
+
+
+

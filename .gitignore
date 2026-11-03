@@ -1,0 +1,14 @@
+.agents/
+.vs/
+docs/
+openspec/
+**/x64/
+**/obj/
+**/Debug/
+**/Release/
+*.vcxproj.user
+artifacts/
+scripts/
+**/bin/
+*.suo
+*.user
