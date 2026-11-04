@@ -1,5 +1,6 @@
 #include "../Shared/Update/UpdatePackage.h"
 #include "../WinMouseFix.Host/UpdateService.h"
+#include "../WinMouseFix.Host/ProductVersion.h"
 #include "../WinMouseFix.Host/JsonSupport.h"
 #include "../ThirdParty/miniz/miniz.h"
 #include <Windows.h>
@@ -72,9 +73,16 @@ void Transactions() {
     }
 }
 void Delivery() {
-    Fixture f; const auto installation=f.root/L"install",source=f.root/L"source"; MakePackage(installation,"2.0.0"); MakePackage(source,"2.1.0");
+    Fixture f; ReleaseVersion next; ParseReleaseTitle(ProductVersion,next); ++next.parts[2]; const auto version=next.Text();
+    const auto installation=f.root/L"install",source=f.root/L"source"; MakePackage(installation,"2.0.0"); MakePackage(source,version);
     std::vector<std::pair<std::string,std::string>> files; for(const auto& item : fs::recursive_directory_iterator(source)) if(item.is_regular_file()) files.emplace_back(winrt::to_string(fs::relative(item.path(),source).generic_wstring()),ReadText(item.path())); Zip(f.root/L"package.zip",files);
-    const auto release=R"([{"name":"v2.1.0","html_url":"https://github.com/EEEEhex/win-mouse-fix/releases/tag/v2.1.0","assets":[{"name":"WinMouseFix-v2.1.0-win-x64.zip","browser_download_url":"https://github.com/EEEEhex/win-mouse-fix/releases/download/v2.1.0/WinMouseFix-v2.1.0-win-x64.zip","size":100,"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}])";
+    const auto filename="WinMouseFix-v"+version+"-win-x64.zip";
+    JsonObject asset; asset.SetNamedValue(L"name",JsonValue::CreateStringValue(winrt::to_hstring(filename)));
+    asset.SetNamedValue(L"browser_download_url",JsonValue::CreateStringValue(winrt::to_hstring("https://github.com/EEEEhex/win-mouse-fix/releases/download/v"+version+"/"+filename)));
+    asset.SetNamedValue(L"size",JsonValue::CreateNumberValue(100)); asset.SetNamedValue(L"digest",JsonValue::CreateStringValue(L"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    JsonArray assets; assets.Append(asset); JsonObject item; item.SetNamedValue(L"name",JsonValue::CreateStringValue(winrt::to_hstring("v"+version)));
+    item.SetNamedValue(L"html_url",JsonValue::CreateStringValue(winrt::to_hstring("https://github.com/EEEEhex/win-mouse-fix/releases/tag/v"+version))); item.SetNamedValue(L"assets",assets);
+    JsonArray releases; releases.Append(item); const auto release=winrt::to_string(releases.Stringify());
     std::atomic<unsigned> attempts{}; std::atomic<bool> cancelCase{};
     UpdateService updates(true,f.root/L"reminder.txt",[&](unsigned,std::stop_token) { return std::string(release); },installation,[&](const ReleaseInfo&,const fs::path& tx,std::stop_token stop,Progress progress) {
         ++attempts; if(cancelCase) { while(!stop.stop_requested()) Sleep(1); throw std::runtime_error("cancelled"); }

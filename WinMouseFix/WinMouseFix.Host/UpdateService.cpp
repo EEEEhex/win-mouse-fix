@@ -102,7 +102,8 @@ ReleasePage ParseReleasePage(std::string_view text) {
 }
 std::string FetchGithubReleases(unsigned page,std::stop_token stop) {
     // Automatic proxy mode includes current-user static proxy, PAC and WPAD.
-    Handle session{WinHttpOpen(L"WinMouseFix/2.0.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,WINHTTP_FLAG_ASYNC)};
+    const auto agent=winrt::to_hstring("WinMouseFix/"+std::string(ProductVersion));
+    Handle session{WinHttpOpen(agent.c_str(),WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,WINHTTP_FLAG_ASYNC)};
     if (!session.value) throw std::runtime_error("network-error");
     Require(WinHttpSetTimeouts(session,5000,5000,10000,10000));
     Handle connection{WinHttpConnect(session,L"api.github.com",INTERNET_DEFAULT_HTTPS_PORT,0)};
@@ -140,7 +141,8 @@ std::string FetchGithubReleases(unsigned page,std::stop_token stop) {
 }
 namespace {
 void DownloadAsset(std::string url,const std::filesystem::path& output,std::uint64_t maximum,std::stop_token stop,wmf::update::Progress progress) {
-    Handle session{WinHttpOpen(L"WinMouseFix/2.0.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,WINHTTP_FLAG_ASYNC)};
+    const auto agent=winrt::to_hstring("WinMouseFix/"+std::string(ProductVersion));
+    Handle session{WinHttpOpen(agent.c_str(),WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,WINHTTP_FLAG_ASYNC)};
     if (!session.value) throw std::runtime_error("network-error"); Require(WinHttpSetTimeouts(session,10000,10000,30000,30000));
     HANDLE cancel = CreateEventW(nullptr,TRUE,FALSE,nullptr); if (!cancel) throw std::runtime_error("network-error");
     struct Close { HANDLE h; ~Close() { CloseHandle(h); } } closer{cancel}; std::stop_callback cancelled(stop,[cancel] { SetEvent(cancel); });

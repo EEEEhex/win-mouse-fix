@@ -1,4 +1,5 @@
 #include "../WinMouseFix.Host/UpdateService.h"
+#include "../WinMouseFix.Host/ProductVersion.h"
 #include "../WinMouseFix.Host/JsonSupport.h"
 #include <atomic>
 #include <chrono>
@@ -56,7 +57,7 @@ void Scheduling() {
         UpdateService empty(true,{},[](unsigned,std::stop_token) { return std::string("[]"); }); empty.Request(1); VERIFY(Finished(empty,1)); VERIFY(State(empty).GetNamedString(L"state") == L"no-releases");
     }
     {
-        UpdateService current(true,{},[](unsigned,std::stop_token) { return std::string(R"([{"name":"v2.0.0","html_url":"https://github.com/EEEEhex/win-mouse-fix/releases/tag/v2","body":"same"}])"); }); current.Request(1); VERIFY(Finished(current,1)); VERIFY(State(current).GetNamedString(L"state") == L"current");
+        UpdateService current(true,{},[](unsigned,std::stop_token) { return std::string("[{\"name\":\"v")+std::string(ProductVersion)+R"(","html_url":"https://github.com/EEEEhex/win-mouse-fix/releases/tag/current","body":"same"}])"; }); current.Request(1); VERIFY(Finished(current,1)); VERIFY(State(current).GetNamedString(L"state") == L"current");
     }
     {
         UpdateService failed(true,{},[](unsigned,std::stop_token)->std::string { throw std::runtime_error("rate-limit"); }); failed.Tick(1,true,6); VERIFY(Finished(failed,1)); VERIFY(State(failed).GetNamedString(L"state") == L"error" && !failed.TakePrompt());

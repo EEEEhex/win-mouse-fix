@@ -75,7 +75,7 @@ public sealed class UpdateStatus
     public ulong TotalBytes { get; set; }
     public double BytesPerSecond { get; set; }
     public string State { get; set; } = "idle";
-    public string CurrentVersion { get; set; } = "2.0.0";
+    public string CurrentVersion { get; set; } = "2.1.0";
     public ulong CheckId { get; set; }
     public ulong CompletedId { get; set; }
     public bool NotificationPending { get; set; }

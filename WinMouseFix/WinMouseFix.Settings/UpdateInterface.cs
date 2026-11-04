@@ -140,7 +140,7 @@ public sealed partial class MainWindow
     private async Task RunUpdateSmokeAsync(string directory) {
         var fake = (Services.FakeHostSession)_session;
         foreach (var state in new[]{"available","current","no-releases","error"}) {
-            fake.NextUpdate = new() { State=state,Version="2.1.0",Title="v2.1.0",Notes="# 更新日志\n\n- 改善平滑滚动\n- 修复设置保存",Url=RepositoryUrl+"/releases/tag/v2.1.0",Error="http-404" };
+            fake.NextUpdate = new() { State=state,Version="2.2.0",Title="v2.2.0",Notes="# 更新日志\n\n- 改善平滑滚动\n- 修复设置保存",Url=RepositoryUrl+"/releases/tag/v2.2.0",Error="http-404" };
             var pending = CheckForUpdatesAsync(); await Task.Delay(250);
             var dialog = _updateDialog ?? throw new InvalidOperationException("Update dialog was not shown.");
             if (dialog.Tag is not UpdateStatus shown || shown.State != state) throw new InvalidOperationException("Update result did not reach the dialog.");
@@ -148,7 +148,7 @@ public sealed partial class MainWindow
             await CaptureAsync(FindVisual<FrameworkElement>(dialog,item => item.Name == "BackgroundElement") ?? dialog,Path.Combine(directory,"update-"+state+".png"));
             dialog.Hide(); await pending;
         }
-        fake.NextUpdate = new() { State="available",CanInstall=true,Version="2.1.0",Title="v2.1.0",Notes="- Improve scrolling\n- Fix settings",Url=RepositoryUrl+"/releases/tag/v2.1.0" };
+        fake.NextUpdate = new() { State="available",CanInstall=true,Version="2.2.0",Title="v2.2.0",Notes="- Improve scrolling\n- Fix settings",Url=RepositoryUrl+"/releases/tag/v2.2.0" };
         var deliveryDialog = CheckForUpdatesAsync(); await Task.Delay(250);
         if (_updateDialog is null || _updateDialog.PrimaryButtonText != UiText.Get("立即更新")) throw new InvalidOperationException("Automatic installation action missing.");
         await CaptureAsync(FindVisual<FrameworkElement>(_updateDialog,item => item.Name == "BackgroundElement") ?? _updateDialog,Path.Combine(directory,"update-install-available.png"));
@@ -160,7 +160,7 @@ public sealed partial class MainWindow
         await fake.CancelUpdateAsync(); await Task.Delay(300);
         if (_updateDialog.Title.ToString() != UiText.Get("更新已取消")) throw new InvalidOperationException("Cancelled update UI missing.");
         _updateDialog.Hide(); await deliveryDialog;
-        var notified = new UpdateStatus { State="available",CheckId=100,CompletedId=100,NotificationPending=true,Version="2.2.0",Title="v2.2.0",Notes="Automatic update reminder",Url=RepositoryUrl+"/releases/tag/v2.2.0" };
+        var notified = new UpdateStatus { State="available",CheckId=100,CompletedId=100,NotificationPending=true,Version="2.3.0",Title="v2.3.0",Notes="Automatic update reminder",Url=RepositoryUrl+"/releases/tag/v2.3.0" };
         fake.AnnounceUpdate(notified); await Task.Delay(250);
         if (_updateDialog is null || fake.Status.Update.NotificationPending) throw new InvalidOperationException("Automatic update reminder was not shown and acknowledged.");
         await CaptureAsync(FindVisual<FrameworkElement>(_updateDialog,item => item.Name == "BackgroundElement") ?? _updateDialog,Path.Combine(directory,"update-automatic.png"));
@@ -168,6 +168,6 @@ public sealed partial class MainWindow
         var closeDeadline = DateTime.UtcNow.AddSeconds(3);
         while (ReferenceEquals(_updateDialog,closingReminder) && DateTime.UtcNow < closeDeadline) await Task.Delay(25);
         if (_updateDialog is not null) throw new InvalidOperationException("Automatic reminder failed to close or reopened after acknowledgement.");
-        fake.NextUpdate = new() { State="current",Version="2.0.0" };
+        fake.NextUpdate = new() { State="current",Version=CurrentProductVersion };
     }
 }
