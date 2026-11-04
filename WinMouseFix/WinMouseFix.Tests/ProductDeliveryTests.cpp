@@ -19,6 +19,41 @@ void Evidence() {
     VERIFY(confirm(true,10,true) && evidence.Flags() == (WheelSourceValidated|NativeZoomValidated));
     const auto path = env.dataDirectory/L"native-validation.json"; std::ifstream in(path); const auto root = ParseJsonObject(std::string(std::istreambuf_iterator<char>(in),{})); in.close();
     VERIFY(root.HasKey(L"sourceObservation") && root.HasKey(L"pinchObservation"));
+    VERIFY(root.HasKey(L"pinchScope"));
+    using namespace winrt::Windows::Data::Json;
+    const auto baseline=winrt::to_string(root.Stringify());
+    const auto write=[&](const JsonObject& value) { std::ofstream out(path,std::ios::binary|std::ios::trunc); out << winrt::to_string(value.Stringify()); };
+    const auto rebuilt=[&] {
+        auto value=ParseJsonObject(baseline); const auto identity=winrt::to_string(value.GetNamedString(L"identity"));
+        std::size_t end{}; for (unsigned i=0;i<6;++i) end=identity.find('/',end)+1;
+        value.SetNamedValue(L"identity",JsonValue::CreateStringValue(winrt::to_hstring(identity.substr(0,end)+"1/2/3"))); return value;
+    };
+    auto compatible=rebuilt(); write(compatible);
+    VERIFY(evidence.Flags()==NativeZoomValidated); // A rebuild never grants ordinary-wheel acceptance.
+    compatible.Remove(L"pinchScope"); write(compatible);
+    VERIFY(evidence.Flags()==NativeZoomValidated); // Original ABI-v4 user observations survive a compatible rebuild.
+    { std::ifstream before(path,std::ios::binary); const std::string saved(std::istreambuf_iterator<char>(before),{}); before.close();
+      VERIFY(evidence.Flags()==NativeZoomValidated);
+      std::ifstream after(path,std::ios::binary); VERIFY(saved==std::string(std::istreambuf_iterator<char>(after),{})); }
+    for (const auto invalidScope : {JsonValue::CreateStringValue(L"incompatible/pinch/99"),JsonValue::CreateNullValue()}) {
+        auto value=rebuilt(); value.SetNamedValue(L"pinchScope",invalidScope); write(value); VERIFY(!evidence.Flags());
+    }
+    for (const auto invalidIdentity : {L"262143/0/0/26300/1/1/1/2/3",L"262144/0/0/26300/2/1/1/2/3",L"262144/invalid",L"262144/0/0/26300/1/1/1/2/x"}) {
+        auto value=rebuilt(); value.Remove(L"pinchScope"); value.SetNamedValue(L"identity",JsonValue::CreateStringValue(invalidIdentity)); write(value); VERIFY(!evidence.Flags());
+    }
+    { auto value=rebuilt(); value.SetNamedValue(L"simulation",JsonValue::CreateBooleanValue(false)); write(value); VERIFY(!evidence.Flags()); }
+    { auto value=rebuilt(); value.Remove(L"pinchObservation"); write(value); VERIFY(!evidence.Flags()); }
+    { auto value=rebuilt(); value.SetNamedValue(L"flags",JsonValue::CreateNumberValue(0)); write(value); VERIFY(!evidence.Flags()); }
+    for (unsigned invalid=0;invalid<5;++invalid) {
+        auto value=rebuilt(); auto pinch=value.GetNamedObject(L"pinchObservation");
+        if (invalid==0) pinch.SetNamedValue(L"visualConfirmed",JsonValue::CreateBooleanValue(false));
+        if (invalid==1) pinch.SetNamedValue(L"visualOutcome",JsonValue::CreateStringValue(L"not-observed"));
+        if (invalid==2) pinch.SetNamedValue(L"blocked",JsonValue::CreateNumberValue(9));
+        if (invalid==3) pinch.SetNamedValue(L"accepted",JsonValue::CreateNumberValue(9));
+        if (invalid==4) pinch.SetNamedValue(L"frames",JsonValue::CreateNumberValue(0));
+        write(value); VERIFY(!evidence.Flags());
+    }
+    write(ParseJsonObject(baseline)); VERIFY(evidence.Flags()==(WheelSourceValidated|NativeZoomValidated));
     evidence.RecordFailure(true,10,10,10,12,"Excel: frames accepted but no visible pinch zoom");
     VERIFY(evidence.Flags() == WheelSourceValidated);
     { std::ifstream failed(path); const auto data = ParseJsonObject(std::string(std::istreambuf_iterator<char>(failed),{}));

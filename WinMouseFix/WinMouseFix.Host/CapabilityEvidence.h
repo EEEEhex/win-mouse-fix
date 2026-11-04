@@ -3,8 +3,11 @@
 #include "ProductApi.h"
 #include <mutex>
 namespace wmf::host {
-// Evidence is scoped to this OS patch and these engine DLL bytes. Updating any
-// of them invalidates global wheel/pinch permission until explicit validation.
+// Bump when pinch contact semantics or paired-source isolation change.
+// Version/resource rebuilds do not change this contract.
+inline constexpr std::uint32_t PinchValidationContract = 1;
+// Ordinary wheel and Shell diagnostics remain build-specific. Pinch acceptance
+// survives compatible rebuilds on the same OS patch and ABI.
 class CapabilityEvidence {
 public:
     CapabilityEvidence(ProductEnvironment,Capabilities);

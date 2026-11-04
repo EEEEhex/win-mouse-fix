@@ -1,6 +1,7 @@
 #include "NativeApi.h"
 #include "../WinMouseFix.Platform.Win32/DeviceSession.h"
 #include "../WinMouseFix.Host/NativeModules.h"
+#include "../WinMouseFix.Host/CapabilityEvidence.h"
 #include "../WinMouseFix.Host/DiagnosticText.h"
 #include "../WinMouseFix.Host/UpdateService.h"
 #include "../WinMouseFix.Host/JsonSupport.h"
@@ -271,6 +272,18 @@ void BoundaryTiming() {
 
 int main(int argc,char** argv) {
     extern bool TryRunUpdateTestChild(int,char**,int&); int childResult{}; if (TryRunUpdateTestChild(argc,argv,childResult)) return childResult;
+    if (argc==2 && std::string_view(argv[1])=="--native-capabilities") {
+        try {
+            const auto environment=wmf::host::ProductEnvironment::Production();
+            wmf::host::NativeModules modules; std::wstring error;
+            if (!modules.Load(environment.executableDirectory,error)) throw std::runtime_error(winrt::to_string(error));
+            wmf::Capabilities caps; if (!WmfPlatformCapabilities(&caps)) throw std::runtime_error("Cannot query native capabilities");
+            wmf::host::CapabilityEvidence evidence(environment,caps); const auto flags=evidence.Flags();
+            std::cout << "Read-only profile: nativeZoom=" << !!(flags & wmf::NativeZoomValidated)
+                << "; ordinaryWheel=" << !!(flags & wmf::WheelSourceValidated)
+                << "; OS=" << caps.osBuild << '.' << caps.osRevision << "; no input capture or injection performed.\n"; return 0;
+        } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+    }
     if (argc==3 && std::string_view(argv[1])=="--download-update-probe") {
         try {
             const auto page=wmf::host::ParseReleasePage(wmf::host::FetchGithubReleases(1,{})); if (!page.found || page.best.assetUrl.empty()) throw std::runtime_error("No matching release asset");

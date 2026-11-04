@@ -104,7 +104,7 @@ std::string ProductService::StatusJson() {
         const std::string_view feature(name);
         const bool validated = feature == "wheel" ? (api_.validatedFlags & WheelSourceValidated) != 0 : feature == "zoom" && (api_.validatedFlags & NativeZoomValidated) != 0;
         Text(item,L"state",!native ? "unavailable" : validated ? "supported" : "unverified");
-        Text(item,L"reason",!native ? "Required native touchpad APIs are unavailable" : validated ? "Explicit local source/target validation passed for this OS patch and engine build; other applications still need observation" : feature == "wheel" ? "Bounded wheel planner is implemented; source isolation and real target response await explicit validation" :
+        Text(item,L"reason",!native ? "Required native touchpad APIs are unavailable" : validated ? (feature == "zoom" ? "Explicit local pinch observation retained for this OS patch and compatible pinch contract; other applications still need observation" : "Explicit local source/target validation passed for this OS patch and engine build; other applications still need observation") : feature == "wheel" ? "Bounded wheel planner is implemented; source isolation and real target response await explicit validation" :
             feature == "zoom" ? "Independent pinch geometry is implemented; real target response is unverified" :
             feature == "task-view" ? "Diagnostic triggering succeeded; progressive expansion was limited. The real side-button path needs confirmation" : "The new configurable side-button path requires confirmation");
         Text(item,L"trigger","not-run"); Text(item,L"continuous",feature == "task-view" ? "limited" : "not-run");

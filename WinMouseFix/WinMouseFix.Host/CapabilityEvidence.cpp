@@ -5,6 +5,7 @@
 #include <sstream>
 #include <cmath>
 #include <iomanip>
+#include <charconv>
 namespace wmf::host {
 namespace {
 std::uint64_t HashFile(const std::filesystem::path& path) {
@@ -15,6 +16,23 @@ std::uint64_t HashFile(const std::filesystem::path& path) {
 }
 std::string Mapping(const BindingConfig& c) {
     std::ostringstream out; out << std::setprecision(17) << c.shellFingers << '/' << c.shellMmPerCountX << '/' << c.shellMmPerCountY << '/' << c.thresholdCounts << '/' << c.directionRatio; return out.str();
+}
+std::string_view IdentityEnvironment(std::string_view identity) noexcept {
+    std::size_t start{},environmentEnd{};
+    for (unsigned i=0;i<9;++i) {
+        const auto slash=identity.find('/',start);
+        if ((i<8 && slash==std::string_view::npos) || (i==8 && slash!=std::string_view::npos)) return {};
+        const auto end=slash==std::string_view::npos ? identity.size() : slash;
+        if (start==end) return {};
+        std::uint64_t number{}; const auto parsed=std::from_chars(identity.data()+start,identity.data()+end,number);
+        if (parsed.ec!=std::errc{} || parsed.ptr!=identity.data()+end) return {};
+        if (i==5) environmentEnd=slash;
+        if (slash!=std::string_view::npos) start=slash+1;
+    }
+    return identity.substr(0,environmentEnd);
+}
+std::string PinchScope(std::string_view identity) {
+    return std::string(IdentityEnvironment(identity))+"/pinch/"+std::to_string(PinchValidationContract);
 }
 }
 CapabilityEvidence::CapabilityEvidence(ProductEnvironment environment,Capabilities caps) : environment_(std::move(environment)) {
@@ -69,14 +87,23 @@ std::uint32_t CapabilityEvidence::Flags() const noexcept {
         const auto path = environment_.dataDirectory/L"native-validation.json";
         if (!std::filesystem::exists(path) || std::filesystem::file_size(path) > 8192) return 0;
         std::ifstream in(path,std::ios::binary); const std::string bytes(std::istreambuf_iterator<char>(in),{}); const auto root = ParseJsonObject(bytes);
-        if (root.GetNamedNumber(L"schemaVersion") != 1 || root.GetNamedBoolean(L"simulation") != environment_.simulation || root.GetNamedString(L"identity") != winrt::to_hstring(identity_)) return 0;
+        if (root.GetNamedNumber(L"schemaVersion") != 1 || root.GetNamedBoolean(L"simulation") != environment_.simulation) return 0;
+        const auto recordedIdentity=winrt::to_string(root.GetNamedString(L"identity"));
+        const auto environment=IdentityEnvironment(identity_),recordedEnvironment=IdentityEnvironment(recordedIdentity);
+        if (environment.empty() || recordedEnvironment!=environment) return 0;
         const auto number = root.GetNamedNumber(L"flags"); if (!std::isfinite(number) || number < 0 || number > 3 || std::floor(number) != number) return 0;
         const auto flags = static_cast<std::uint32_t>(number);
         auto verified = flags;
+        if (recordedIdentity!=identity_) verified &= ~WheelSourceValidated;
         if (verified & NativeZoomValidated) {
             try { const auto pinch = root.GetNamedObject(L"pinchObservation");
+                // ABI v4 records predate pinchScope and used the same first
+                // pinch contract. Reuse that observation without rewriting it.
+                const bool compatible=root.HasKey(L"pinchScope")
+                    ? root.GetNamedString(L"pinchScope")==winrt::to_hstring(PinchScope(identity_))
+                    : AbiVersion==0x00040000 && PinchValidationContract==1;
                 const auto raw = pinch.GetNamedNumber(L"raw",0),blocked = pinch.GetNamedNumber(L"blocked",0),accepted = pinch.GetNamedNumber(L"accepted",0);
-                if (!pinch.GetNamedBoolean(L"visualConfirmed",false) || pinch.GetNamedString(L"visualOutcome",L"") != L"pass" ||
+                if (!compatible || !pinch.GetNamedBoolean(L"visualConfirmed",false) || pinch.GetNamedString(L"visualOutcome",L"") != L"pass" ||
                     !std::isfinite(raw) || raw < 10 || std::floor(raw) != raw || raw != blocked || raw != accepted || pinch.GetNamedNumber(L"frames",0) <= 0)
                     verified &= ~NativeZoomValidated;
             } catch (...) { verified &= ~NativeZoomValidated; }
@@ -98,6 +125,7 @@ void CapabilityEvidence::Confirm(bool zoom,std::uint64_t expected,std::uint64_t 
     root.SetNamedValue(L"schemaVersion",JsonValue::CreateNumberValue(1)); root.SetNamedValue(L"simulation",JsonValue::CreateBooleanValue(environment_.simulation));
     root.SetNamedValue(L"identity",JsonValue::CreateStringValue(winrt::to_hstring(identity_))); root.SetNamedValue(L"utc",JsonValue::CreateStringValue(winrt::to_hstring(UtcNow())));
     root.SetNamedValue(L"flags",JsonValue::CreateNumberValue(prior|(zoom ? NativeZoomValidated : WheelSourceValidated)));
+    if (zoom || (prior & NativeZoomValidated)) root.SetNamedValue(L"pinchScope",JsonValue::CreateStringValue(winrt::to_hstring(PinchScope(identity_))));
     root.SetNamedValue(L"expectedPackets",JsonValue::CreateNumberValue(static_cast<double>(expected))); root.SetNamedValue(L"rawPackets",JsonValue::CreateNumberValue(static_cast<double>(raw)));
     root.SetNamedValue(L"blockedHooks",JsonValue::CreateNumberValue(static_cast<double>(blocked))); root.SetNamedValue(L"acceptedPackets",JsonValue::CreateNumberValue(static_cast<double>(accepted)));
     root.SetNamedValue(L"frames",JsonValue::CreateNumberValue(static_cast<double>(frames))); root.SetNamedValue(L"visualConfirmed",JsonValue::CreateBooleanValue(visual)); root.SetNamedValue(L"notes",JsonValue::CreateStringValue(winrt::to_hstring(notes)));
