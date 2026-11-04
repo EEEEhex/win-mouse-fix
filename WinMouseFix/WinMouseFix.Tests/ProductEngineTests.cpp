@@ -12,7 +12,7 @@ int checks{},failures{};
 struct Fake;
 thread_local Fake* active{};
 struct Fake {
-    bool foreground{true},desktop{true},policyOk{true},failCreate{},failOpen{},failCleanup{};
+    bool foreground{true},desktop{true},policyOk{true},failCreate{},failOpen{},failCleanup{},anchorMatches{true};
     int attempts{},failSubmit{-1},destroyed{},stops{},policies{};
     bool nativeContact{};
     std::uint64_t nativeSequence{};
@@ -45,8 +45,8 @@ struct Fake {
         };
         a.execute = [](const ActionRequest* r) noexcept -> Result { active->actions.push_back(*r); return {}; };
         a.clock = [](void* p) noexcept { return ++static_cast<Fake*>(p)->now; };
-        a.targetValid = [](void* p,const InputEvent&,TargetPolicy policy,bool) noexcept {
-            auto& f = *static_cast<Fake*>(p); return f.desktop && (policy == TargetPolicy::InputDesktop || f.foreground);
+        a.targetValid = [](void* p,const InputEvent&,TargetPolicy policy,bool anchor) noexcept {
+            auto& f = *static_cast<Fake*>(p); return f.desktop && (!anchor || f.anchorMatches) && (policy == TargetPolicy::InputDesktop || f.foreground);
         };
         a.policy = [](void* p,std::uint64_t,TargetPolicy policy) noexcept -> Result {
             auto& f = *static_cast<Fake*>(p); ++f.policies; f.selected = policy;
@@ -84,6 +84,25 @@ void DirectPath() {
     VERIFY(e.Process(Event(InputKind::Up,Button::Forward,3,4)));
     VERIFY(f.frames.back().phase == Phase::End && f.actions.size() == 1);
     VERIFY(e.Close()); VERIFY(f.destroyed == 1 && f.stops == 2);
+}
+void MovingCursor() {
+    for (const auto button : {Button::Back,Button::Forward}) {
+        Fake f; ProductEngine engine(DefaultBindingConfig(),f.Api()); VERIFY(engine.Initialize());
+        VERIFY(engine.Process(Event(InputKind::Down,button,1,1)));
+        f.anchorMatches=false;
+        VERIFY(engine.Process(Event(InputKind::Move,button,1,2,0,-20)));
+        VERIFY(engine.ContactActive() && f.frames.size()==2 && f.canceled.empty());
+        VERIFY(engine.Process(Event(InputKind::Move,button,1,3,2,3)));
+        VERIFY(engine.ContactActive() && f.frames.back().phase==Phase::Update);
+        VERIFY(engine.Process(Event(InputKind::Up,button,1,4)));
+        VERIFY(!engine.ContactActive() && f.frames.back().phase==Phase::End && f.actions.empty());
+        VERIFY(engine.Close());
+    }
+    Fake f; auto config=DefaultBindingConfig(); config.wheelMode=WheelMode::Regular;
+    ProductEngine engine(config,f.Api()); VERIFY(engine.Initialize()); f.anchorMatches=false;
+    auto wheel=Event(InputKind::Wheel,Button::None,1,1); wheel.wheelY=120;
+    VERIFY(engine.Process(wheel)); VERIFY(f.frames.empty()); // Ordinary wheel retains its independent target guard.
+    VERIFY(engine.Close());
 }
 void TargetAndRange() {
     for (bool shell : {false,true}) {
@@ -178,6 +197,7 @@ void PinchOwnsOutput() {
     Fake f; ProductEngine e(config,f.Api()); VERIFY(e.Initialize());
     auto wheel = Event(InputKind::Wheel,Button::None,1,1); wheel.wheelY = 120; VERIFY(e.Process(wheel));
     VERIFY(e.Process(Event(InputKind::Down,Button::Back,2,1))); VERIFY(f.frames.back().phase == Phase::Cancel);
+    f.anchorMatches = false; // Moving the physical cursor also keeps side-button zoom alive.
     auto combo = Event(InputKind::Wheel,Button::Back,2,2); combo.wheelY = 60; VERIFY(e.Process(combo));
     f.now += config.qpcFrequency/10; VERIFY(e.Tick(f.now));
     const auto last = f.frames.back(); VERIFY(last.count == 2 && last.phase == Phase::Update);
@@ -320,5 +340,5 @@ void WheelRangeDoesNotRecontactWithinBurst() {
 }
 }
 int RunProductEngineTests(int& total) {
-    DirectPath(); TargetAndRange(); FailuresAndSnapshots(); Queue(); WheelLifecycle(); PinchOwnsOutput(); PinchTrajectoryAndRelease(); PinchBoundaryRecovery(); PinchQueuedInputAndCancellation(); PinchReverseAndFailure(); PinchHeldAcrossPauses(); WheelRangeDoesNotRecontactWithinBurst(); total += checks; return failures;
+    DirectPath(); MovingCursor(); TargetAndRange(); FailuresAndSnapshots(); Queue(); WheelLifecycle(); PinchOwnsOutput(); PinchTrajectoryAndRelease(); PinchBoundaryRecovery(); PinchQueuedInputAndCancellation(); PinchReverseAndFailure(); PinchHeldAcrossPauses(); WheelRangeDoesNotRecontactWithinBurst(); total += checks; return failures;
 }

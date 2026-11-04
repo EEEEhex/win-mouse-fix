@@ -92,6 +92,15 @@ ConfigError ConfigStore::Load() {
     if (state->warning) state->warning = {ConfigProblem::RecoveryRequired,"config.json","Configuration missing; a backup requires explicit recovery"};
     state_ = state; return state->warning;
 }
+ConfigError ConfigStore::EnsureSaved() {
+    std::lock_guard lock(writer_);
+    try {
+        const auto previous = state_.load(); if (!previous->initialFileMissing) return {};
+        auto next = std::make_shared<ConfigState>(*previous); next->initialFileMissing = false;
+        const auto saved = files_->Save(SerializeConfig(previous->config),std::nullopt,false);
+        if (!saved) return StorageError(saved); state_ = std::move(next); return {};
+    } catch (...) { return StorageError({Status::NativeFailure,ERROR_WRITE_FAULT}); }
+}
 ConfigError ConfigStore::Commit(std::uint64_t expectedRevision,ProductConfig candidate,bool recovery,PreparePublication transactionPrepare) {
     std::lock_guard lock(writer_);
     try {

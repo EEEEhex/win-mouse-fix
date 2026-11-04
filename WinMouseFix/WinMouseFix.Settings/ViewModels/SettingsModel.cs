@@ -149,6 +149,17 @@ public sealed class SettingsModel : INotifyPropertyChanged, IAsyncDisposable
         catch (Exception e) { Offline(e); return null; }
     }
     public Task ExitHostAsync() => _client.ExitAsync();
+    public async Task<bool> SetDataLocationAsync(string location) {
+        if (location is not ("appdata" or "program") || !await FlushAsync()) return false;
+        try {
+            var reply = await _client.SetDataLocationAsync(location,Committed.Revision);
+            if (!reply.Ok) { Reject(reply); return false; }
+            if (reply.Payload.TryGetProperty("status",out var status)) { var incoming = JsonSerializer.Deserialize<HostStatus>(status.GetRawText(),ConfigurationJson.Options)!; if (incoming.Version >= Status.Version) Status = incoming; }
+            Accept(reply,false);
+            if (reply.Code == "storage-restarting") { Message = UiText.Get("正在迁移配置，后台和设置将自动重启…"); Changed(); }
+            return true;
+        } catch (Exception error) { Offline(error); return false; }
+    }
     public async Task RecordShellAsync(object observation) {
         if (!await FlushAsync()) return;
         try { var reply = await _client.RecordShellAsync(observation,Committed.Revision); if (reply.Ok) Accept(reply,false); else Reject(reply); }

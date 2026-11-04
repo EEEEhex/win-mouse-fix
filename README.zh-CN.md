@@ -32,7 +32,11 @@ Win Mouse Fix 的灵感来自 [Mac Mouse Fix](https://github.com/noah-nuebling/m
 3. 运行 `WinMouseFix.Host.exe`。单击系统托盘图标打开设置，在 **通用 → 启动 Win Mouse Fix** 中开启鼠标增强。
 4. 如果希望登录 Windows 后自动运行，可开启 **通用 → 登录 Windows 时启动**。
 
-程序无需安装器，便携发行版不会将自己注册到 Windows 的“已安装的应用”列表中。关闭设置窗口后，Win Mouse Fix 仍会在系统托盘中运行。
+配置默认保存在 `%LOCALAPPDATA%\WinMouseFix`。在 **通用 → 更多设置 → 配置保存位置** 中，可选择 **保存到程序所在目录**，使用 `WinMouseFix.Host.exe` 同级的 `Data` 文件夹。切换时自动迁移数据并重启；移动或升级便携版时，请保留 `Data` 和 `WinMouseFix.storage.json`。
+
+## 更新
+
+在 **通用 → 检查更新** 中查看新版本和更新日志，点击 **立即更新** 后即可下载、查看进度、安装并自动重启。两种保存位置的配置都会保留。开启 **自动更新** 后，程序会在启动时及设定间隔检查更新；安装仍需您确认。网络请求自动使用 Windows 系统代理设置。
 
 ## 卸载
 

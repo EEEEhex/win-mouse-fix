@@ -60,8 +60,6 @@ private:
     std::uint32_t HeldButtons() const noexcept;
     bool DesktopActive() const noexcept;
     bool Bound(Button,std::uint32_t) const noexcept;
-    bool HasTrigger(Button,std::uint32_t,Trigger) const noexcept;
-    bool HasNativeZoom(Button,std::uint32_t) const noexcept;
     bool WheelEligible(std::int64_t) const noexcept;
     bool ProductHook(WPARAM,const MSLLHOOKSTRUCT&) noexcept;
     void CancelWheel(CancelReason,std::uint64_t) noexcept;

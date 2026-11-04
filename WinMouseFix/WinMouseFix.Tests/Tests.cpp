@@ -3,6 +3,7 @@
 #include "../WinMouseFix.Host/NativeModules.h"
 #include "../WinMouseFix.Host/DiagnosticText.h"
 #include "../WinMouseFix.Host/UpdateService.h"
+#include "../WinMouseFix.Host/JsonSupport.h"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -269,6 +270,19 @@ void BoundaryTiming() {
 }
 
 int main(int argc,char** argv) {
+    extern bool TryRunUpdateTestChild(int,char**,int&); int childResult{}; if (TryRunUpdateTestChild(argc,argv,childResult)) return childResult;
+    if (argc==3 && std::string_view(argv[1])=="--download-update-probe") {
+        try {
+            const auto page=wmf::host::ParseReleasePage(wmf::host::FetchGithubReleases(1,{})); if (!page.found || page.best.assetUrl.empty()) throw std::runtime_error("No matching release asset");
+            const std::filesystem::path output{winrt::to_hstring(argv[2]).c_str()}; if (std::filesystem::exists(output)) throw std::runtime_error("Choose a new isolated output directory"); std::filesystem::create_directories(output);
+            wmf::host::DownloadRelease(page.best,output,{},{});
+            std::cout << "Binary download passed; version=" << page.best.version.Text() << "; bytes=" << std::filesystem::file_size(output/L"package.zip") << "; sha256=" << wmf::update::Sha256(output/L"package.zip") << '\n'; return 0;
+        } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+    }
+    if (argc==5 && std::string_view(argv[1])=="--update-package-probe") {
+        try { const std::filesystem::path archive{winrt::to_hstring(argv[2]).c_str()},output{winrt::to_hstring(argv[4]).c_str()}; wmf::update::ExtractPackage(archive,output,{}); const auto manifest=wmf::update::VerifyPackage(output,argv[3]); std::cout << "ZIP extraction and all " << manifest.files.size() << " file hashes passed; version=" << manifest.version << '\n'; return 0; }
+        catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--update-probe") {
         try { const auto page = wmf::host::ParseReleasePage(wmf::host::FetchGithubReleases(1,{})); std::cout << "System/current-user automatic proxy; releases=" << page.count << "; best-title-version=" << (page.found ? page.best.version.Text() : "none") << '\n'; return 0; }
         catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
@@ -279,6 +293,8 @@ int main(int argc,char** argv) {
     extern int RunProductLogTests(int&);
     extern int RunProductDeliveryTests(int&);
     extern int RunUpdateTests(int&);
+    extern int RunUpdatePackageTests(int&);
+    extern int RunDataLocationTests(int&);
     extern int RunProductRuntimeTests(int&);
     extern int RunProductConfigTests(int&);
     extern int RunControlPipeTests(int&);
@@ -302,6 +318,8 @@ int main(int argc,char** argv) {
     failures += RunProductLogTests(checks);
     failures += RunProductDeliveryTests(checks);
     failures += RunUpdateTests(checks);
+    failures += RunUpdatePackageTests(checks);
+    failures += RunDataLocationTests(checks);
     failures += RunProductRuntimeTests(checks);
     failures += RunProductConfigTests(checks);
     failures += RunControlPipeTests(checks);

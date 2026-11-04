@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup><Filter Include="源文件"><UniqueIdentifier>{3B28E252-8BFA-4167-A6C0-591EC687F952}</UniqueIdentifier></Filter><Filter Include="资源文件"><UniqueIdentifier>{C8BC43B9-125D-46C8-813D-AACCB2A113E3}</UniqueIdentifier></Filter></ItemGroup>
+  <ItemGroup><ClCompile Include="Main.cpp"><Filter>源文件</Filter></ClCompile></ItemGroup>
+  <ItemGroup><ResourceCompile Include="Updater.rc"><Filter>资源文件</Filter></ResourceCompile></ItemGroup>
+</Project>

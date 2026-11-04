@@ -115,7 +115,7 @@ struct NativeFixture {
     UINT sent{2}; bool failCleanup{};
     CaptureTarget target{9,-1920,120};
     std::uint32_t modifiers{},held{};
-    bool desktop{true},valid{true},allowDesktop{true}; int keyboards{};
+    bool desktop{true},valid{true},allowDesktop{true},anchorMatches{true}; int keyboards{};
     CaptureNative Api() {
         return {this,
             [](void* p,void*) -> HWND { auto& f = *static_cast<NativeFixture*>(p); ++f.created; return ++f.stage == f.failAt ? nullptr : reinterpret_cast<HWND>(1); },
@@ -138,8 +138,8 @@ struct NativeFixture {
             f.keyboards += add ? 1 : -1; return TRUE;
         };
         api.target = [](void* p) { return static_cast<NativeFixture*>(p)->target; };
-        api.validTarget = [](void* p,const CaptureTarget&,TargetPolicy policy,bool) {
-            auto& f = *static_cast<NativeFixture*>(p); return f.desktop && (f.valid || (policy == TargetPolicy::InputDesktop && f.allowDesktop));
+        api.validTarget = [](void* p,const CaptureTarget&,TargetPolicy policy,bool anchor) {
+            auto& f = *static_cast<NativeFixture*>(p); return f.desktop && (!anchor || f.anchorMatches) && (f.valid || (policy == TargetPolicy::InputDesktop && f.allowDesktop));
         };
         api.modifiers = [](void* p) { return static_cast<NativeFixture*>(p)->modifiers; };
         api.heldButtons = [](void* p) { return static_cast<NativeFixture*>(p)->held; };
@@ -180,7 +180,10 @@ void ProductCaptureBoundaries() {
         VERIFY(f.events.back().dx == 1 && f.events.back().dy == 2 && f.events.back().revision == 1);
         auto changed = f.config.bindings; changed.revision = 2; changed.bindingCount = 0;
         VERIFY(c.UpdateBindings(changed)); c.ApplyPendingBindings(); VERIFY(c.AppliedRevision() == 2);
-        f.Raw(c,0,4,5); VERIFY(f.events.back().revision == 1 && c.Hook(WM_MOUSEMOVE,data));
+        f.native.anchorMatches = false; // Cursor moved before the first drag frame.
+        VERIFY(!c.Hook(WM_MOUSEMOVE,data)); c.Tick(); VERIFY(f.events.back().kind != InputKind::Cancel);
+        f.Raw(c,0,4,5); VERIFY(f.events.back().revision == 1 && !c.Hook(WM_MOUSEMOVE,data));
+        VERIFY(f.events.back().dx == 4 && f.events.back().dy == 5 && f.events.back().anchorX == -1920);
         f.Raw(c,up); VERIFY(c.Hook(WM_XBUTTONUP,data)); f.Complete(c);
         VERIFY(!c.Hook(WM_XBUTTONDOWN,data)); VERIFY(!c.Hook(WM_XBUTTONUP,data));
         VERIFY(c.Close()); VERIFY(f.native.sendCalls == 0 && f.native.keyboards == 0);
@@ -210,14 +213,15 @@ void ProductCaptureBoundaries() {
 }
 void ProductWheelsAndRecording() {
     {
-        // A zoom-only binding still owns an anchor, even without a drag binding.
-        // Incidental movement must not cancel its first native pinch frame.
+        // Side-button zoom also keeps the cursor free; incidental movement
+        // must not cancel its first native pinch frame or leak physical wheels.
         ProductFixture zoomOnly; zoomOnly.config.flags = ExplicitValidationProbe;
         zoomOnly.config.bindings.bindingCount = 2;
         zoomOnly.config.bindings.bindings[1] = {2,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
         MouseCapture capture(zoomOnly.config,zoomOnly.native.ProductApi()); VERIFY(capture.Open()); capture.Command(CaptureCommand::Enable,0);
         const auto back = zoomOnly.HookData(); VERIFY(capture.Hook(WM_XBUTTONDOWN,back)); zoomOnly.Raw(capture,RI_MOUSE_BUTTON_4_DOWN);
-        VERIFY(capture.Hook(WM_MOUSEMOVE,back)); zoomOnly.Raw(capture,0,0,-1);
+        zoomOnly.native.anchorMatches = false;
+        VERIFY(!capture.Hook(WM_MOUSEMOVE,back)); zoomOnly.Raw(capture,0,0,-1);
         auto wheel = back; wheel.mouseData = static_cast<ULONG>(static_cast<USHORT>(120))<<16;
         VERIFY(capture.Hook(WM_MOUSEWHEEL,wheel)); zoomOnly.Raw(capture,RI_MOUSE_WHEEL,0,0,120);
         wheel.mouseData = static_cast<ULONG>(static_cast<USHORT>(-120))<<16;
@@ -281,7 +285,7 @@ void ProductGenerationsAndRemoval() {
     ProductFixture f; MouseCapture c(f.config,f.native.ProductApi()); VERIFY(c.Open()); c.Command(CaptureCommand::Enable,17);
     auto back = f.HookData(); VERIFY(!c.Hook(WM_LBUTTONDOWN,back)); VERIFY(!c.Hook(WM_LBUTTONUP,back));
     VERIFY(c.Hook(WM_XBUTTONDOWN,back)); f.Raw(c,RI_MOUSE_BUTTON_4_DOWN); const auto first = f.events.back().session;
-    VERIFY(f.events.back().generation == 17); c.Removed(reinterpret_cast<HANDLE>(8)); VERIFY(c.Hook(WM_MOUSEMOVE,back));
+    VERIFY(f.events.back().generation == 17); c.Removed(reinterpret_cast<HANDLE>(8)); VERIFY(!c.Hook(WM_MOUSEMOVE,back));
     c.Removed(reinterpret_cast<HANDLE>(7)); VERIFY(f.events.back().reason == CancelReason::DeviceRemoved && !c.Hook(WM_MOUSEMOVE,back));
     CaptureRevision revisions; VERIFY(c.Revisions(revisions) && !revisions.active);
     VERIFY(c.Hook(WM_XBUTTONUP,back)); // A late orphan Up stays swallowed without retaining an endless owner.
@@ -290,7 +294,7 @@ void ProductGenerationsAndRemoval() {
     const auto events = f.events.size(); f.Raw(c,0,100,200); VERIFY(f.events.size() == events);
     VERIFY(c.Hook(WM_XBUTTONUP,back)); VERIFY(c.Hook(WM_XBUTTONDOWN,back)); f.Raw(c,RI_MOUSE_BUTTON_4_DOWN);
     VERIFY(f.events.back().generation == 18 && f.events.back().session > first);
-    c.Command(CaptureCommand::CompleteDrag,first); VERIFY(c.Hook(WM_MOUSEMOVE,back));
+    c.Command(CaptureCommand::CompleteDrag,first); VERIFY(!c.Hook(WM_MOUSEMOVE,back));
     f.Raw(c,RI_MOUSE_BUTTON_4_UP); VERIFY(c.Hook(WM_XBUTTONUP,back)); f.Complete(c); VERIFY(c.Close());
 }
 void ResourcesAndReplay() {

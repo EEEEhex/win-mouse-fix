@@ -10,6 +10,18 @@ ProductRuntimeApi GuardEnvironment(const ProductEnvironment& environment,Product
     if (api.simulation && !environment.simulation) throw std::invalid_argument("Fake product backend requires an isolated environment");
     api.simulation = environment.simulation; return api;
 }
+BindingConfig AvailableBindings(BindingConfig config,std::uint32_t flags) noexcept {
+    if (flags & ExplicitValidationProbe) return config;
+    if (!(flags & WheelSourceValidated)) config.wheelMode = WheelMode::Off;
+    if (!(flags & NativeZoomValidated)) {
+        std::uint32_t count{};
+        for (std::uint32_t i=0;i<config.bindingCount;++i)
+            if (config.bindings[i].action != Action::NativeZoom) config.bindings[count++] = config.bindings[i];
+        for (auto i=count;i<config.bindingCount;++i) config.bindings[i] = {};
+        config.bindingCount = count;
+    }
+    return config;
+}
 }
 ProductRuntime::ProductRuntime(const ProductEnvironment& environment,BindingConfig config,bool enabled,ProductRuntimeApi api,std::uint32_t flags)
     : ProductRuntime(config,enabled,GuardEnvironment(environment,api),flags) {}
@@ -18,7 +30,9 @@ ProductRuntime::ProductRuntime(BindingConfig config,bool enabled,ProductRuntimeA
     if (api_.simulation && (api_.createCapture == WmfProductCaptureCreate || api_.engine.submit == WmfPlatformSubmitContacts || api_.engine.execute == WmfExecuteAction))
         throw std::invalid_argument("Simulation requires fake capture, contact submission and discrete actions");
     if (!WmfValidateBindings(&config,nullptr)) throw std::invalid_argument("Invalid product binding configuration");
-    current_ = std::make_shared<const BindingConfig>(config); configs_.emplace(config.revision,current_);
+    // Availability affects execution only. ConfigStore keeps every user binding
+    // so an expired optional capability never blocks unrelated gestures.
+    current_ = std::make_shared<const BindingConfig>(AvailableBindings(config,flags_)); configs_.emplace(config.revision,current_);
     stop_ = CreateEventW(nullptr,TRUE,FALSE,nullptr); workerWake_ = CreateEventW(nullptr,FALSE,FALSE,nullptr); captureWake_ = CreateEventW(nullptr,FALSE,FALSE,nullptr);
     deadlineTimer_ = CreateWaitableTimerExW(nullptr,nullptr,CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,TIMER_MODIFY_STATE|SYNCHRONIZE);
     if (!stop_ || !workerWake_ || !captureWake_ || !deadlineTimer_) {
@@ -46,7 +60,7 @@ Result ProductRuntime::Publish(const BindingConfig& config) {
 }
 Result ProductRuntime::Prepare(const BindingConfig& config,PreparedConfig& prepared) {
     const auto valid = WmfValidateBindings(&config,nullptr); if (!valid) return valid;
-    auto snapshot = std::make_shared<const BindingConfig>(config);
+    auto snapshot = std::make_shared<const BindingConfig>(AvailableBindings(config,flags_));
     {
         std::lock_guard lock(configsMutex_);
         if (config.revision <= current_->revision) return {Status::InvalidState};

@@ -103,7 +103,7 @@ Result ProductEngine::Abort(Result first,CancelReason reason) noexcept {
 Result ProductEngine::Cancel(CancelReason reason) noexcept { processStarted_ = Now(); return Abort({},reason); }
 Result ProductEngine::Decide(const InputEvent& event,const BindingDecision& decision) noexcept {
     if (decision.effects & DecisionCanceled) return Abort({},decision.actionInput.reason != CancelReason::None ? decision.actionInput.reason : event.reason);
-    if (decision.action == Action::NativeZoom && contact_ && !Target(event,policy_,true)) return Abort({},CancelReason::TargetChanged);
+    if (decision.action == Action::NativeZoom && contact_ && !Target(event,policy_,false)) return Abort({},CancelReason::TargetChanged);
     if (decision.effects & DecisionStopInertia) {
         if (inertia_) {
             const auto stopped = api_.stopInertia(platform_,0);
@@ -127,7 +127,9 @@ Result ProductEngine::Decide(const InputEvent& event,const BindingDecision& deci
         if (!valid) return Abort(valid.code == Status::OutOfRange ? Result{} : valid,CancelReason::UnsupportedInput);
     }
     if (decision.frameCount && decision.frames[0].phase == Phase::Begin) {
-        if (!Target(event,TargetPolicy::Application,true)) return Abort({},CancelReason::TargetChanged);
+        // The press selects a target, not a fixed cursor position. Side-button
+        // gestures use raw motion while the physical pointer remains free.
+        if (!Target(event,TargetPolicy::Application,false)) return Abort({},CancelReason::TargetChanged);
         if (api_.policy) {
             const auto accepted = api_.policy(api_.context,event.session,decision.targetPolicy);
             if (!accepted) return Abort({},CancelReason::StaleInput);
@@ -135,7 +137,7 @@ Result ProductEngine::Decide(const InputEvent& event,const BindingDecision& deci
         policy_ = decision.targetPolicy; action_ = decision.action;
     }
     for (std::uint32_t i = 0; i < decision.frameCount; ++i) {
-        if (!Target(event,policy_,true)) return Abort({},CancelReason::TargetChanged);
+        if (!Target(event,policy_,false)) return Abort({},CancelReason::TargetChanged);
         ProductTrace t; t.kind = ProductTraceKind::Frame; t.action = decision.action; t.direction = decision.direction; t.input = event; t.frame = decision.frames[i];
         if (decision.action == Action::NativeZoom && t.frame.phase == Phase::Update)
             t.stationary = t.frame.contacts[1].xMm == lastSubmitted_.contacts[1].xMm;

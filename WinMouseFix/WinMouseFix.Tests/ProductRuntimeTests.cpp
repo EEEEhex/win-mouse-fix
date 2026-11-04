@@ -271,16 +271,37 @@ void Service() {
     unsigned updateChecks{}; std::uint64_t updateAcknowledged{};
     api.checkUpdates = [&] { ++updateChecks; }; api.acknowledgeUpdate = [&](std::uint64_t id) { updateAcknowledged = id; };
     api.updateStatus = [] { return std::string(R"({"state":"current","checkId":1,"completedId":1,"currentVersion":"2.0.0"})"); };
+    unsigned downloadCalls{},cancelCalls{},installCalls{}; bool updateBusy{};
+    api.downloadUpdate = [&](std::uint64_t id) { ++downloadCalls; return id == 1; };
+    api.cancelUpdate = [&] { ++cancelCalls; return true; }; api.installUpdate = [&] { ++installCalls; return true; }; api.updateBusy = [&] { return updateBusy; };
+    unsigned relocationCalls{}; bool allowRelocation{};
+    api.switchDataLocation = [&](DataLocation target) -> Result { ++relocationCalls; return allowRelocation && target == DataLocation::Program ? Result{} : Result{Status::NativeFailure,ERROR_ACCESS_DENIED}; };
     ProductService service(environment,store,runtime,startup,api);
     auto call = [&](std::string_view id,std::string_view command,std::string_view payload = "{}",std::uint64_t expected = 0,std::uint64_t connection = 1) {
         return ParseJsonObject(service.Handle(ServiceRequest(service,id,command,payload,expected),connection,GetCurrentProcessId()));
     };
     VERIFY(call("hello","hello").GetNamedBoolean(L"ok")); VERIFY(!registry.writes && !hostFixture.created);
+    VERIFY(!call("bad-storage","set-data-location",R"({"location":"other"})",1).GetNamedBoolean(L"ok"));
+    VERIFY(!call("stale-storage","set-data-location",R"({"location":"program"})",0).GetNamedBoolean(L"ok"));
+    VERIFY(call("same-storage","set-data-location",R"({"location":"appdata"})",1).GetNamedBoolean(L"ok") && relocationCalls == 0);
+    VERIFY(!call("failed-storage","set-data-location",R"({"location":"program"})",1).GetNamedBoolean(L"ok") && relocationCalls == 1);
+    allowRelocation = true; VERIFY(call("switch-storage","set-data-location",R"({"location":"program"})",1).GetNamedBoolean(L"ok"));
+    VERIFY(ParseJsonObject(service.StatusJson()).GetNamedObject(L"storage").GetNamedBoolean(L"switching"));
+    VERIFY(!call("storage-busy","set-enabled",R"({"enabled":true})").GetNamedBoolean(L"ok"));
+    service.DataLocationSwitchFailed({Status::NativeFailure,ERROR_ACCESS_DENIED});
     VERIFY(call("check-updates","check-updates").GetNamedBoolean(L"ok") && updateChecks == 1);
     VERIFY(call("check-updates","check-updates").GetNamedBoolean(L"ok") && updateChecks == 1);
     VERIFY(!call("bad-check","check-updates",R"({"unexpected":true})").GetNamedBoolean(L"ok"));
     VERIFY(call("ack-update","acknowledge-update",R"({"checkId":1})").GetNamedBoolean(L"ok") && updateAcknowledged == 1);
     VERIFY(!call("bad-ack","acknowledge-update",R"({"checkId":"1"})").GetNamedBoolean(L"ok"));
+    VERIFY(!call("bad-download","download-update",R"({"checkId":"1"})").GetNamedBoolean(L"ok") && downloadCalls == 0);
+    VERIFY(!call("stale-download","download-update",R"({"checkId":99})").GetNamedBoolean(L"ok"));
+    VERIFY(call("download","download-update",R"({"checkId":1})").GetNamedBoolean(L"ok"));
+    VERIFY(call("download","download-update",R"({"checkId":1})").GetNamedBoolean(L"ok") && downloadCalls == 2);
+    VERIFY(call("cancel-download","cancel-update").GetNamedBoolean(L"ok") && cancelCalls == 1);
+    VERIFY(call("install-download","install-update").GetNamedBoolean(L"ok") && installCalls == 1);
+    VERIFY(!call("bad-install","install-update",R"({"anything":true})").GetNamedBoolean(L"ok"));
+    updateBusy = true; VERIFY(!call("update-storage","set-data-location",R"({"location":"program"})",1).GetNamedBoolean(L"ok")); updateBusy = false;
     const auto observation = R"({"action":"task-view","trigger":"pass","continuous":"limited","hold":"pass","reverse":"pass","release":"pass","notes":"Fake protocol calibration, not a real Shell result"})";
     VERIFY(!call("old-calibration","record-shell-observation",observation,0).GetNamedBoolean(L"ok"));
     VERIFY(call("calibration","record-shell-observation",observation,1).GetNamedBoolean(L"ok"));
@@ -292,10 +313,10 @@ void Service() {
     VERIFY(call("save","update-config",payload,1).Stringify() == reply.Stringify()); VERIFY(store.Current()->config.input.revision == 2);
     VERIFY(!call("stale","update-config",payload,1).GetNamedBoolean(L"ok"));
     config = store.Current()->config; config.input.wheelMode = WheelMode::High;
-    VERIFY(!call("wheel-unverified","update-config","{\"config\":"+SerializeConfig(config)+"}",2).GetNamedBoolean(L"ok"));
-    VERIFY(store.Current()->config.input.revision == 2);
+    VERIFY(call("wheel-unverified","update-config","{\"config\":"+SerializeConfig(config)+"}",2).GetNamedBoolean(L"ok"));
+    VERIFY(store.Current()->config.input.revision == 3);
     config = store.Current()->config; config.startup = true; registry.failWrite = true;
-    reply = call("startup-fails","update-config","{\"config\":"+SerializeConfig(config)+"}",2);
+    reply = call("startup-fails","update-config","{\"config\":"+SerializeConfig(config)+"}",3);
     VERIFY(reply.GetNamedBoolean(L"ok") && reply.GetNamedString(L"code") == L"saved-with-startup-error");
     VERIFY(store.Current()->config.startup && !startup.Status().registered && registry.writes == 1);
     VERIFY(!call("bad-boolean","set-enabled","{\"enabled\":\"yes\"}").GetNamedBoolean(L"ok"));
@@ -306,17 +327,17 @@ void Service() {
     VERIFY(ParseJsonObject(service.StatusJson()).GetNamedObject(L"recordedButton").GetNamedString(L"button") == L"middle");
     service.Disconnected(2); VERIFY(service.Recording()); service.Disconnected(1); VERIFY(!service.Recording());
     VERIFY(call("record-timeout","record-start").GetNamedBoolean(L"ok")); ticks = 31001; service.Tick(); VERIFY(!service.Recording());
-    VERIFY(!call("reset-cancel","reset-defaults","{\"confirmed\":false}",3).GetNamedBoolean(L"ok"));
-    registry.failWrite = false; VERIFY(call("reset","reset-defaults","{\"confirmed\":true}",3).GetNamedBoolean(L"ok"));
+    VERIFY(!call("reset-cancel","reset-defaults","{\"confirmed\":false}",4).GetNamedBoolean(L"ok"));
+    registry.failWrite = false; VERIFY(call("reset","reset-defaults","{\"confirmed\":true}",4).GetNamedBoolean(L"ok"));
     VERIFY(!store.Current()->config.enabled && !store.Current()->config.startup && registry.removes == 1);
     const auto exported = call("export","export-config").GetNamedObject(L"payload").GetNamedObject(L"config");
-    VERIFY(call("import","import-config","{\"config\":"+winrt::to_string(exported.Stringify())+"}",4).GetNamedBoolean(L"ok"));
-    VERIFY(store.Current()->config.input.revision == 5 && store.Current()->config.input.bindingCount == 4);
+    VERIFY(call("import","import-config","{\"config\":"+winrt::to_string(exported.Stringify())+"}",5).GetNamedBoolean(L"ok"));
+    VERIFY(store.Current()->config.input.revision == 6 && store.Current()->config.input.bindingCount == 4);
     auto invalid = exported; auto bindings = invalid.GetNamedArray(L"bindings"); auto collision = bindings.GetObjectAt(1);
     collision.SetNamedValue(L"trigger",winrt::Windows::Data::Json::JsonValue::CreateStringValue(L"click"));
     collision.SetNamedValue(L"action",winrt::Windows::Data::Json::JsonValue::CreateStringValue(L"mute"));
-    VERIFY(!call("invalid-import","import-config","{\"config\":"+winrt::to_string(invalid.Stringify())+"}",5).GetNamedBoolean(L"ok"));
-    VERIFY(store.Current()->config.input.revision == 5);
+    VERIFY(!call("invalid-import","import-config","{\"config\":"+winrt::to_string(invalid.Stringify())+"}",6).GetNamedBoolean(L"ok"));
+    VERIFY(store.Current()->config.input.revision == 6);
     const auto golden = environment.executableDirectory.parent_path().parent_path().parent_path()/L"artifacts/product-validation/config-goldens";
     std::filesystem::create_directories(golden);
     std::ofstream(golden/L"service-status.json",std::ios::binary) << service.StatusJson();
@@ -351,8 +372,44 @@ void ZoomOnlyService() {
     VERIFY(zoom && !wheel);
     config = store.Current()->config; config.input.wheelMode = WheelMode::High;
     reply = ParseJsonObject(service.Handle(ServiceRequest(service,"no-global-wheel","update-config","{\"config\":"+SerializeConfig(config)+"}",2),1,GetCurrentProcessId()));
-    VERIFY(!reply.GetNamedBoolean(L"ok") && store.Current()->config.input.revision == 2 && !registry.writes && !f.created);
+    VERIFY(reply.GetNamedBoolean(L"ok") && store.Current()->config.input.revision == 3 && !registry.writes && !f.created);
+    runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
+}
+void OptionalCapabilities() {
+    for (const std::uint32_t flags : {0u,static_cast<unsigned>(WheelSourceValidated),static_cast<unsigned>(NativeZoomValidated),static_cast<unsigned>(WheelSourceValidated|NativeZoomValidated),static_cast<unsigned>(ExplicitValidationProbe)}) {
+        auto config=DefaultBindingConfig(); config.wheelMode=WheelMode::High;
+        config.bindings[config.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
+        Fixture f; f.hold=f.noMotion=true; ProductRuntime runtime(config,true,f.Api(),flags);
+        VERIFY(Wait([&] { return f.enables >= 1; }));
+        const bool zoom=(flags&(NativeZoomValidated|ExplicitValidationProbe))!=0,wheel=(flags&(WheelSourceValidated|ExplicitValidationProbe))!=0;
+        VERIFY(f.config.bindings.bindingCount==(zoom?5u:4u));
+        VERIFY(f.config.bindings.wheelMode==(wheel?WheelMode::High:WheelMode::Off));
+        VERIFY(config.bindingCount==5 && config.bindings[4].action==Action::NativeZoom && config.wheelMode==WheelMode::High);
+        config.revision=2; config.mmPerCountX=0.2; VERIFY(runtime.Publish(config));
+        VERIFY(Wait([&] { return f.applied==2; }));
+        VERIFY(f.config.bindings.bindingCount==(zoom?5u:4u) && f.config.bindings.wheelMode==(wheel?WheelMode::High:WheelMode::Off));
+        f.release=true; VERIFY(Wait([&] { return f.completed>=1; })); runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }) && runtime.Failure());
+    }
+}
+void ExpiredZoomDoesNotBlockEnable() {
+    auto config=DefaultProductConfig(false); config.input.bindings[config.input.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
+    auto disk=std::make_unique<ServiceFiles>(); disk->active=SerializeConfig(config); ConfigStore store(std::move(disk)); VERIFY(store.Load());
+    const auto environment=IsolatedEnvironment(); Fixture f; f.hold=true; ProductRuntime runtime(environment,store.Current()->config.input,false,f.Api());
+    Registry registry; StartupRegistration startup(environment,L"D:/With Spaces/WinMouseFix.Host.exe",registry.Api());
+    ProductServiceApi api; api.simulation=true; api.capabilities=f.Api().engine.capabilities; ProductService service(environment,store,runtime,startup,api);
+    const auto reply=ParseJsonObject(service.Handle(ServiceRequest(service,"enable-existing-zoom","set-enabled",R"({"enabled":true})"),1,GetCurrentProcessId()));
+    VERIFY(reply.GetNamedBoolean(L"ok")); VERIFY(Wait([&] { return f.submitted>=2; }));
+    VERIFY(runtime.Requested() && runtime.State()==ProductRuntimeState::Enabled && runtime.Failure());
+    VERIFY(store.Current()->config.enabled && store.Current()->config.input.bindingCount==5 && store.Current()->config.input.bindings[4].action==Action::NativeZoom);
+    VERIFY(f.config.bindings.bindingCount==4 && f.config.bindings.wheelMode==WheelMode::Off && f.config.flags==0);
+    const auto status=ParseJsonObject(service.StatusJson()); bool unverified{};
+    for (const auto& entry : status.GetNamedArray(L"capabilities")) { const auto item=entry.GetObject(); if(item.GetNamedString(L"name")==L"zoom") unverified=item.GetNamedString(L"state")==L"unverified"; }
+    VERIFY(unverified); f.release=true; VERIFY(Wait([&] { return f.completed>=1; }));
+    auto changed=store.Current()->config; changed.input.mmPerCountX=0.2;
+    const auto saved=ParseJsonObject(service.Handle(ServiceRequest(service,"save-existing-zoom","update-config","{\"config\":"+SerializeConfig(changed)+"}",changed.input.revision),1,GetCurrentProcessId()));
+    VERIFY(saved.GetNamedBoolean(L"ok") && store.Current()->config.input.bindingCount==5); VERIFY(Wait([&] { return f.applied==store.Current()->config.input.revision; }));
+    VERIFY(f.config.bindings.bindingCount==4);
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 }
-int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); total += checks; return failures; }
+int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); total += checks; return failures; }

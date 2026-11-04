@@ -82,4 +82,18 @@ if (File.Exists(logExport)) {
     }
 }
 if (OperatingSystem.IsWindows()) checks += await ClientChecks.Pipes(output);
+if (OperatingSystem.IsWindows()) {
+    var storageRoot = Path.GetFullPath(Path.Combine(output,"data-location",Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(storageRoot);
+    var host = Path.Combine(storageRoot,"WinMouseFix.Host.exe"); var appData = Path.Combine(storageRoot,"AppData"); var marker = Path.Combine(storageRoot,"WinMouseFix.storage.json");
+    Check(WinMouseFix.Settings.Services.SettingsEndpoint.ResolvePreferencesDirectory(host,appData) == Path.Combine(appData,"Settings"));
+    File.WriteAllText(marker,"{\"schemaVersion\":1,\"location\":\"program\"}");
+    Check(WinMouseFix.Settings.Services.SettingsEndpoint.ResolvePreferencesDirectory(host,appData) == Path.Combine(storageRoot,"Data","Settings"));
+    File.WriteAllText(marker,"{\"schemaVersion\":1,\"location\":\"appdata\"}");
+    Check(WinMouseFix.Settings.Services.SettingsEndpoint.ResolvePreferencesDirectory(host,appData) == Path.Combine(appData,"Settings"));
+    foreach (var invalid in new[]{"{}","{\"schemaVersion\":1,\"location\":\"other\"}","{\"schemaVersion\":2,\"location\":\"program\"}"}) {
+        File.WriteAllText(marker,invalid); bool rejected = false;
+        try { WinMouseFix.Settings.Services.SettingsEndpoint.ResolvePreferencesDirectory(host,appData); } catch (IOException) { rejected = true; }
+        Check(rejected);
+    }
+}
 Console.WriteLine($"{checks} managed configuration/client/model checks passed; isolated pipe stubs only; no real Host or desktop input started.");

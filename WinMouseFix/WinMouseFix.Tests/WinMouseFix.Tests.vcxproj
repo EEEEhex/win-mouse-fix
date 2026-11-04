@@ -9,6 +9,7 @@
   <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries><UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries></PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <Import Project="..\Common.props" />
+  <Import Project="..\Shared\Update\UpdateSources.props" />
   <ItemDefinitionGroup>
     <ClCompile><PreprocessorDefinitions>WINMOUSEFIXPLATFORMWIN32_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
     <Link><SubSystem>Console</SubSystem><DelayLoadDLLs>WinMouseFix.Core.dll</DelayLoadDLLs><AdditionalDependencies>winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;advapi32.lib;version.lib;wtsapi32.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link>
@@ -16,6 +17,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Tests.cpp" />
+    <ClCompile Include="UpdatePackageTests.cpp" />
     <ClCompile Include="RuntimeTests.cpp" />
     <ClCompile Include="ContentDragTests.cpp" />
     <ClCompile Include="CaptureTests.cpp" />
@@ -25,7 +27,7 @@
     <ClCompile Include="ProductEngineTests.cpp" />
     <ClCompile Include="WheelTests.cpp" />
     <ClCompile Include="ProductLogTests.cpp" />
-    <ClCompile Include="ProductDeliveryTests.cpp" /><ClCompile Include="UpdateTests.cpp" /><ClCompile Include="..\WinMouseFix.Host\UpdateService.cpp" />
+    <ClCompile Include="ProductDeliveryTests.cpp" /><ClCompile Include="UpdateTests.cpp" /><ClCompile Include="DataLocationTests.cpp" /><ClCompile Include="..\WinMouseFix.Host\DataLocation.cpp" /><ClCompile Include="..\WinMouseFix.Host\UpdateService.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\CapabilityEvidence.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\ResidentTray.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\TimingMetrics.cpp" />
@@ -62,6 +64,3 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
-
-
-

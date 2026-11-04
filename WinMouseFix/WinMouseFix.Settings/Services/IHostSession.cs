@@ -15,8 +15,13 @@ public interface IHostSession : IAsyncDisposable
     Task<HostReply> ResetAsync(ulong expected, CancellationToken cancellation = default);
     Task<HostReply> SetEnabledAsync(bool enabled, CancellationToken cancellation = default);
     Task<HostReply> SetStartupAsync(bool enabled, ulong expected, CancellationToken cancellation = default);
+    Task<HostReply> SetDataLocationAsync(string location,ulong expected,CancellationToken cancellation = default);
     Task<HostReply> StartTraceAsync(CancellationToken cancellation = default);
     Task<HostReply> CheckUpdatesAsync(CancellationToken cancellation = default);
+    Task<HostReply> ReadyAsync(CancellationToken cancellation = default);
+    Task<HostReply> DownloadUpdateAsync(ulong checkId,CancellationToken cancellation = default);
+    Task<HostReply> CancelUpdateAsync(CancellationToken cancellation = default);
+    Task<HostReply> InstallUpdateAsync(CancellationToken cancellation = default);
     Task<HostReply> AcknowledgeUpdateAsync(ulong checkId,CancellationToken cancellation = default);
     Task<HostReply> RecordShellAsync(object observation,ulong expected,CancellationToken cancellation = default);
     Task<HostReply> RecordAsync(bool enabled, CancellationToken cancellation = default);

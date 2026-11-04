@@ -46,6 +46,7 @@ public partial class App : Application
             await _window.ConnectAsync();
             if (!_window.Model.Connected) throw new IOException(_window.Model.Message);
             if (smoke) _window.AppWindow.Show(false); else _window.Activate();
+            await _window.MarkReadyAsync();
             if (smoke) {
                 File.WriteAllText(Path.Combine(_smokeOutput!,"ready.json"),"{\"simulation\":true,\"ready\":true}");
                 await _window.RunSmokeAsync(_smokeOutput!);

@@ -3,12 +3,14 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.IO.Pipes;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
 
 namespace WinMouseFix.Settings.Services;
@@ -36,7 +38,22 @@ public sealed class SettingsEndpoint
         ulong hash = 14695981039346656037UL;
         unchecked { foreach (char c in desktop.ToString()) { hash = (hash ^ (byte)c)*1099511628211UL; hash = (hash ^ (byte)(c >> 8))*1099511628211UL; } }
         var scope = $"WinMouseFix.v1.{sid}.{Process.GetCurrentProcess().SessionId}.{hash:x16}";
-        return new(scope, LocateHost(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WinMouseFix/Settings"), false);
+        var host = LocateHost();
+        return new(scope,host,ResolvePreferencesDirectory(host,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"WinMouseFix")),false);
+    }
+    internal static string ResolvePreferencesDirectory(string host,string appDataDirectory) {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(host))!; var marker = Path.Combine(directory,"WinMouseFix.storage.json");
+        if (!File.Exists(marker)) return Path.Combine(appDataDirectory,"Settings");
+        try {
+            if (new FileInfo(marker).Length > 4096) throw new IOException();
+            using var json = JsonDocument.Parse(File.ReadAllText(marker)); var root = json.RootElement;
+            if (root.EnumerateObject().Count() != 2 || root.GetProperty("schemaVersion").GetUInt32() != 1) throw new IOException();
+            return root.GetProperty("location").GetString() switch {
+                "program" => Path.Combine(directory,"Data","Settings"),
+                "appdata" => Path.Combine(appDataDirectory,"Settings"),
+                _ => throw new IOException()
+            };
+        } catch { throw new IOException(UiText.Get("配置位置记录损坏，请检查 WinMouseFix.storage.json。")); }
     }
     public static SettingsEndpoint Isolated(string scope, string host, string preferences)
     {

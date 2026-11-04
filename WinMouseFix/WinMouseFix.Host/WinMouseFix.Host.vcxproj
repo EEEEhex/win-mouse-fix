@@ -97,6 +97,7 @@
   </ItemGroup>
 
   <Import Project="..\Common.props" />
+  <Import Project="..\Shared\Update\UpdateSources.props" />
   <ItemGroup>
     <ClCompile Include="NativeModules.cpp" />
     <ClCompile Include="InputRuntime.cpp" />
@@ -116,7 +117,7 @@
     <ClCompile Include="ProductPaths.cpp" />
     <ClCompile Include="ProductSimulation.cpp" />
     <ClCompile Include="ResidentTray.cpp" />
-    <ClCompile Include="ResidentMode.cpp" /><ClCompile Include="UpdateService.cpp" />
+    <ClCompile Include="ResidentMode.cpp" /><ClCompile Include="UpdateService.cpp" /><ClCompile Include="DataLocation.cpp" />
     <ClCompile Include="ProductEnvironment.cpp" />
     <ClCompile Include="ControlPipe.cpp" />
     <ClCompile Include="ProductProtocol.cpp" />
@@ -150,7 +151,7 @@
     <ClInclude Include="ProductPaths.h" />
     <ClInclude Include="ProductSimulation.h" />
     <ClInclude Include="ResidentTray.h" />
-    <ClInclude Include="ResidentMode.h" /><ClInclude Include="UpdateService.h" /><ClInclude Include="ProductVersion.h" />
+    <ClInclude Include="ResidentMode.h" /><ClInclude Include="UpdateService.h" /><ClInclude Include="DataLocation.h" /><ClInclude Include="ProductVersion.h" />
     <ClInclude Include="ProductEnvironment.h" />
     <ClInclude Include="ControlPipe.h" />
     <ClInclude Include="ProductProtocol.h" />
@@ -168,7 +169,3 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
-
-
-
-

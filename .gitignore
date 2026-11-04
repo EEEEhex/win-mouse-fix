@@ -12,3 +12,11 @@ scripts/
 **/bin/
 *.suo
 *.user
+Data/
+Data.*/
+WinMouseFix.storage*.json
+WinMouseFix.storage*.tmp
+# Update transactions contain runtime files and user configuration snapshots.
+.wmf-update-*/
+.wmf-update.json*
+.wmf-update.lock

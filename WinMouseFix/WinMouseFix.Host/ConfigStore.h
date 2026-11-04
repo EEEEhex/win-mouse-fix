@@ -47,6 +47,7 @@ public:
     explicit ConfigStore(std::unique_ptr<ConfigFiles>,PreparePublication = {});
     std::shared_ptr<const ConfigState> Current() const noexcept { return state_.load(); }
     ConfigError Load();
+    ConfigError EnsureSaved();
     ConfigError Commit(std::uint64_t expectedRevision,ProductConfig candidate,bool explicitRecovery = false,PreparePublication transactionPrepare = {});
 private:
     std::unique_ptr<ConfigFiles> files_;

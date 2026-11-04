@@ -55,13 +55,25 @@ public sealed class HostStatus
     public uint LogError { get; set; }
     public bool ExitRequested { get; set; }
     public UpdateStatus Update { get; set; } = new();
+    public DataStorageStatus Storage { get; set; } = new();
     public FailureInfo Failure { get; set; } = new();
     public CaptureInfo Capture { get; set; } = new();
     public List<CapabilityInfo> Capabilities { get; set; } = [];
     public RecordedButton? RecordedButton { get; set; }
 }
+public sealed class DataStorageStatus
+{
+    public string Location { get; set; } = "appdata";
+    public string Directory { get; set; } = "";
+    public bool Switching { get; set; }
+    public uint NativeError { get; set; }
+}
 public sealed class UpdateStatus
 {
+    public bool CanInstall { get; set; }
+    public ulong ReceivedBytes { get; set; }
+    public ulong TotalBytes { get; set; }
+    public double BytesPerSecond { get; set; }
     public string State { get; set; } = "idle";
     public string CurrentVersion { get; set; } = "2.0.0";
     public ulong CheckId { get; set; }

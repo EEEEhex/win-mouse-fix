@@ -15,12 +15,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NativeReceiver", "WinMouseF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinMouseFix.Settings", "WinMouseFix.Settings\WinMouseFix.Settings.csproj", "{2796AD5A-C92D-4357-B007-1E473949C7D6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WinMouseFix.Updater", "WinMouseFix.Updater\WinMouseFix.Updater.vcxproj", "{8774F1B6-AC9B-4C76-A2C2-27731FF8D7A1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8774F1B6-AC9B-4C76-A2C2-27731FF8D7A1}.Debug|x64.ActiveCfg = Debug|x64
+		{8774F1B6-AC9B-4C76-A2C2-27731FF8D7A1}.Debug|x64.Build.0 = Debug|x64
+		{8774F1B6-AC9B-4C76-A2C2-27731FF8D7A1}.Release|x64.ActiveCfg = Release|x64
+		{8774F1B6-AC9B-4C76-A2C2-27731FF8D7A1}.Release|x64.Build.0 = Release|x64
 		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Debug|x64.ActiveCfg = Debug|x64
 		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Debug|x64.Build.0 = Debug|x64
 		{F8132B42-BFE0-4035-ABAD-B9FF4E01B8E8}.Release|x64.ActiveCfg = Release|x64

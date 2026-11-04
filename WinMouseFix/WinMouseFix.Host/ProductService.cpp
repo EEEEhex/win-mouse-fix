@@ -64,17 +64,17 @@ void ProductService::BeginExit(bool client) noexcept {
 bool ProductService::MayClose() const noexcept { return exiting_ && runtime_.Finished() && (exitAcked_ || Now() >= exitUntil_); }
 std::string ProductService::Handle(std::string_view text,std::uint64_t connection,DWORD pid) { return protocol_.Handle(text,connection,pid); }
 ConfigError ProductService::Gate(const ProductConfig& config) const {
-    const auto valid = ValidateConfig(config); if (!valid) return valid;
-    if (config.input.wheelMode != WheelMode::Off && !(api_.validatedFlags & WheelSourceValidated)) return {ConfigProblem::Validation,"wheel.mode","Bounded wheel planner is ready; physical/native source isolation and target response require explicit validation"};
-    for (unsigned i = 0; i < config.input.bindingCount; ++i) if (config.input.bindings[i].action == Action::NativeZoom && !(api_.validatedFlags & NativeZoomValidated))
-        return {ConfigProblem::Validation,"bindings","Native pinch geometry is implemented; target response and source isolation require explicit validation",config.input.bindings[i].id};
-    return {};
+    // Unverified features are excluded from the runtime snapshot, without
+    // rejecting the saved configuration or the application's enable switch.
+    return ValidateConfig(config);
 }
 std::string ProductService::StatusJson() {
     EnsureJsonApartment(); JsonObject status;
     Number(status,L"version",++statusSerial_);
     Text(status,L"productVersion",ProductVersion); Number(status,L"abiVersion",AbiVersion); Text(status,L"architecture","x64"); Text(status,L"nativeSdk","10.0.28000.0");
     if (api_.updateStatus) status.SetNamedValue(L"update",ParseJsonObject(api_.updateStatus()));
+    JsonObject storage; Text(storage,L"location",DataLocationName(environment_.dataLocation)); Text(storage,L"directory",winrt::to_string(environment_.dataDirectory.wstring()));
+    Boolean(storage,L"switching",storageSwitchPending_); Number(storage,L"nativeError",storageError_); status.SetNamedValue(L"storage",storage);
     JsonObject os; Number(os,L"major",capabilities_.osMajor); Number(os,L"minor",capabilities_.osMinor); Number(os,L"build",capabilities_.osBuild); Number(os,L"revision",capabilities_.osRevision); Boolean(os,L"revisionKnown",capabilities_.revisionKnown != 0); status.SetNamedValue(L"os",os);
     constexpr const char* states[]{"paused","starting","enabled","faulted","stopping","stopped"};
     Text(status,L"state",states[static_cast<unsigned>(runtime_.State())]); Boolean(status,L"requested",runtime_.Requested());
@@ -165,12 +165,42 @@ ProtocolReply ProductService::DispatchInner(const ProtocolRequest& request) {
     if (request.command == "exit") { EmptyPayload(payload); BeginExit(true); return StatusResponse(); }
     if (request.command == "exit-ack") { EmptyPayload(payload); exitAcked_ = true; return StatusResponse(); }
     if (exiting_) return Rejected("closing","Host is stopping");
+    if (request.command == "set-data-location") {
+        if (api_.updateBusy && api_.updateBusy()) return Rejected("busy","An update is in progress");
+        if (payload.Size() != 1 || !payload.HasKey(L"location")) return Rejected("bad-request","Expected data location");
+        const auto name = payload.GetNamedString(L"location");
+        if (name != L"appdata" && name != L"program") return Rejected("bad-request","Unknown data location");
+        const auto current = store_.Current();
+        if (current->recoveryRequired) return Rejected("recovery-required","Resolve configuration recovery before moving data");
+        if (request.expectedRevision != current->config.input.revision) return Rejected("revision-conflict","Reload before moving data");
+        const auto target = name == L"program" ? DataLocation::Program : DataLocation::AppData;
+        if (target == environment_.dataLocation) return StatusResponse();
+        if (!api_.switchDataLocation) return Rejected("not-ready","Data relocation is unavailable");
+        if (storageSwitchPending_.exchange(true)) return Rejected("busy","Data relocation is already pending");
+        storageError_ = 0; const auto result = api_.switchDataLocation(target);
+        if (!result) { DataLocationSwitchFailed(result); return Rejected("storage-error","Could not start configuration relocation"); }
+        auto reply = StatusResponse(); reply.code = "storage-restarting"; return reply;
+    }
+    if (storageSwitchPending_) return Rejected("busy","Configuration relocation is restarting the Host");
     if (request.command == "check-updates") { EmptyPayload(payload); if (!api_.checkUpdates) return Rejected("not-ready","Update service is unavailable"); api_.checkUpdates(); return StatusResponse(); }
+    if (request.command == "download-update") {
+        if (payload.Size() != 1 || !payload.HasKey(L"checkId")) return Rejected("bad-request","Expected update check identity");
+        if (store_.Current()->recoveryRequired || !api_.downloadUpdate || !api_.downloadUpdate(JsonUnsigned(payload,L"checkId"))) return Rejected("not-ready","Update is unavailable or no longer current"); return StatusResponse();
+    }
+    if (request.command == "cancel-update" || request.command == "install-update") {
+        EmptyPayload(payload); auto& action = request.command == "cancel-update" ? api_.cancelUpdate : api_.installUpdate;
+        if (!action || !action()) return Rejected("not-ready","Update is not ready for this action"); return StatusResponse();
+    }
     if (request.command == "acknowledge-update") {
         if (payload.Size() != 1 || !payload.HasKey(L"checkId")) return Rejected("bad-request","Expected update check identity");
         if (api_.acknowledgeUpdate) api_.acknowledgeUpdate(JsonUnsigned(payload,L"checkId")); return StatusResponse();
     }
     if (request.command == "open-settings") { EmptyPayload(payload); if (api_.openSettings) api_.openSettings(); return StatusResponse(); }
+    if (request.command == "settings-ready") {
+        EmptyPayload(payload); if (!api_.isSettingsProcess || !api_.isSettingsProcess(request.clientPid)) return Rejected("bad-request","Settings process identity required");
+        if (api_.settingsReady) api_.settingsReady(request.clientPid); return StatusResponse();
+    }
+    if (api_.updateStatus && ParseJsonObject(api_.updateStatus()).GetNamedString(L"state",L"") == L"installing") return Rejected("busy","The update is restarting Win Mouse Fix");
     if (request.command == "record-start") {
         EmptyPayload(payload);
         {

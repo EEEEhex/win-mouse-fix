@@ -267,13 +267,6 @@ bool MouseCapture::Bound(Button button,std::uint32_t modifiers) const noexcept {
         if (bindings_.bindings[i].button == button && bindings_.bindings[i].modifiers == modifiers) return true;
     return false;
 }
-bool MouseCapture::HasTrigger(Button button,std::uint32_t modifiers,Trigger trigger) const noexcept {
-    for (unsigned i = 0; i < bindings_.bindingCount; ++i) {
-        const auto& b = bindings_.bindings[i];
-        if (b.button == button && b.modifiers == modifiers && b.trigger == trigger) return true;
-    }
-    return false;
-}
 bool MouseCapture::WheelEligible(std::int64_t delta) const noexcept {
     if (activeRecording_) return false;
     for (unsigned i = 0; i < activeBindings_.bindingCount; ++i) {
@@ -281,14 +274,6 @@ bool MouseCapture::WheelEligible(std::int64_t delta) const noexcept {
         if (b.action == Action::NativeZoom && !(productFlags_ & ExplicitValidationProbe) && (productFlags_ & (WheelSourceValidated|NativeZoomValidated)) != (WheelSourceValidated|NativeZoomValidated)) continue;
         if (b.button == selected_ && b.modifiers == selectedModifiers_ && (b.trigger == Trigger::Wheel ||
             (b.trigger == Trigger::WheelUp && delta > 0) || (b.trigger == Trigger::WheelDown && delta < 0))) return true;
-    }
-    return false;
-}
-bool MouseCapture::HasNativeZoom(Button button,std::uint32_t modifiers) const noexcept {
-    if (!(productFlags_ & ExplicitValidationProbe) && (productFlags_ & (WheelSourceValidated|NativeZoomValidated)) != (WheelSourceValidated|NativeZoomValidated)) return false;
-    for (unsigned i = 0; i < activeBindings_.bindingCount; ++i) {
-        const auto& b = activeBindings_.bindings[i];
-        if (b.button == button && b.modifiers == modifiers && b.trigger == Trigger::Wheel && b.action == Action::NativeZoom) return true;
     }
     return false;
 }
@@ -366,7 +351,9 @@ bool MouseCapture::ProductHook(WPARAM kind,const MSLLHOOKSTRUCT& data) noexcept 
             return blocked;
         }
         selected_ = button; selectedModifiers_ = modifiers; activeBindings_ = bindings_; activeRecording_ = recording_; activeGeneration_ = generation_;
-        activeFreeze_ = !recording_ && (HasTrigger(button,modifiers,Trigger::Drag) || HasNativeZoom(button,modifiers));
+        // Own the button and raw deltas, while Windows continues to move the
+        // pointer normally (including acceleration, screen edges and monitors).
+        activeFreeze_ = false;
         const auto blocked = gate_.Down(target,now,button,activeFreeze_);
         if (!blocked) passedButtons_ |= ButtonBit(button);
         return blocked;

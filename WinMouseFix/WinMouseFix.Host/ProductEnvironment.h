@@ -3,14 +3,17 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include "DataLocation.h"
 
 namespace wmf::host {
 struct ProductEnvironment {
     std::filesystem::path dataDirectory,executableDirectory;
+    DataPaths dataPaths;
+    DataLocation dataLocation{DataLocation::AppData};
     std::wstring sid,scope,pipe,hostMutex,settingsMutex,inputOwnerSuffix;
     DWORD session{};
     bool simulation{};
-    static ProductEnvironment Production();
+    static ProductEnvironment Production(bool resolveDataLocation = true);
     static ProductEnvironment Simulation(const std::filesystem::path& repository,std::wstring_view instanceTag = {});
 };
 class UserSecurity {

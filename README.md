@@ -32,7 +32,11 @@ Requires **Windows 11 x64**.
 3. Run `WinMouseFix.Host.exe`. Click its system tray icon to open Settings, then turn on **General → Enable Win Mouse Fix**.
 4. Optionally enable **General → Start when you sign in** to launch the app when you sign in to Windows.
 
-No installer is required. The portable release does not register itself in Windows Installed apps. Closing Settings keeps Win Mouse Fix running in the system tray.
+Configuration is stored in `%LOCALAPPDATA%\WinMouseFix` by default. In **General → More settings → Configuration storage**, you can choose **Save in the program directory** to use the `Data` folder beside `WinMouseFix.Host.exe`. Switching migrates your data and restarts the app automatically. Keep both `Data` and `WinMouseFix.storage.json` when moving or upgrading a portable installation.
+
+## Updates
+
+Open **General → Check for updates** to view a newer version and its release notes. Choose **Update now** to download it with progress, install it, and restart Win Mouse Fix. Settings are preserved in either storage location. Enable **Automatic updates** to check at startup and at your chosen interval; installation still requires your approval. Requests use your Windows system proxy settings.
 
 ## Uninstallation
 

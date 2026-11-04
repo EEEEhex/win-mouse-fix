@@ -58,8 +58,13 @@ public sealed class HostClient : IHostSession
     public Task<HostReply> SetEnabledAsync(bool enabled, CancellationToken cancellation = default) =>
         SendAsync("set-enabled", new { enabled }, emergency: true, cancellation: cancellation);
     public Task<HostReply> SetStartupAsync(bool enabled, ulong expected, CancellationToken cancellation = default) => SendAsync("set-startup",new { enabled },expected,cancellation: cancellation);
+    public Task<HostReply> SetDataLocationAsync(string location,ulong expected,CancellationToken cancellation = default) => SendAsync("set-data-location",new { location },expected,cancellation: cancellation);
     public Task<HostReply> StartTraceAsync(CancellationToken cancellation = default) => SendAsync("start-trace",new { },cancellation: cancellation);
     public Task<HostReply> CheckUpdatesAsync(CancellationToken cancellation = default) => SendAsync("check-updates",new { },cancellation: cancellation);
+    public Task<HostReply> ReadyAsync(CancellationToken cancellation = default) => SendAsync("settings-ready",new { },cancellation: cancellation);
+    public Task<HostReply> DownloadUpdateAsync(ulong checkId,CancellationToken cancellation = default) => SendAsync("download-update",new { checkId },cancellation: cancellation);
+    public Task<HostReply> CancelUpdateAsync(CancellationToken cancellation = default) => SendAsync("cancel-update",new { },cancellation: cancellation);
+    public Task<HostReply> InstallUpdateAsync(CancellationToken cancellation = default) => SendAsync("install-update",new { },cancellation: cancellation);
     public Task<HostReply> AcknowledgeUpdateAsync(ulong checkId,CancellationToken cancellation = default) => SendAsync("acknowledge-update",new { checkId },cancellation: cancellation);
     public Task<HostReply> RecordShellAsync(object observation,ulong expected,CancellationToken cancellation = default) => SendAsync("record-shell-observation",observation,expected,cancellation: cancellation);
     public async Task<HostReply> RecordAsync(bool enabled, CancellationToken cancellation = default)

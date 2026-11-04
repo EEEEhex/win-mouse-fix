@@ -19,10 +19,10 @@
 
 namespace wmf::host {
 namespace {
-constexpr UINT OpenSettingsMessage = WM_APP+20, ExitMessage = WM_APP+21;
+constexpr UINT OpenSettingsMessage = WM_APP+20, ExitMessage = WM_APP+21, SwitchDataMessage = WM_APP+22;
 constexpr int SettingsId = 101,ExitId = 102,ToggleId = 103,StartupId = 104;
 constexpr wchar_t ClassName[] = L"WinMouseFix.Resident.v1";
-struct Options { bool settings{},startup{},smoke{},trace{}; std::filesystem::path output; std::wstring simulationTag; unsigned smokeHoldMs{}; };
+struct Options { bool settings{},startup{},smoke{},trace{}; std::filesystem::path output,updateTrial; std::wstring simulationTag; unsigned smokeHoldMs{}; DWORD restartAfter{},restartSettings{}; bool migrate{}; DataLocation migrationFrom{},migrationTo{}; };
 struct Resident {
     HINSTANCE instance{}; HWND window{},settingsWindow{}; DWORD settingsPid{};
     ProductEnvironment environment; Options options;
@@ -41,12 +41,17 @@ struct Resident {
     std::unique_ptr<CapabilityEvidence> evidence;
     std::unique_ptr<UpdateService> updates;
     std::unique_ptr<ProductService> service;
+    std::filesystem::path updateHandoff;
+    HANDLE updaterProcess{};
+    std::uint64_t handoffStarted{};
+    bool updatePermitted{};
     std::vector<std::future<ConfigError>> pending;
     std::wstring lastTip;
     std::uint64_t started{};
     bool faultReported{};
     std::uint32_t reportedCleanup{};
     ~Resident() {
+        if (updaterProcess) CloseHandle(updaterProcess);
         if (runtime) runtime->Stop();
         if (service) service->Stop();
         for (auto& result : pending) { try { if (result.valid()) result.get(); } catch (...) {} } pending.clear();
@@ -66,9 +71,41 @@ struct Resident {
         STARTUPINFOW startupInfo{sizeof(startupInfo)}; PROCESS_INFORMATION process{};
         if (!CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,executable.parent_path().c_str(),&startupInfo,&process))
             MessageBoxW(window,L"无法启动设置窗口。",L"WinMouseFix",MB_OK|MB_ICONERROR);
-        else { CloseHandle(process.hThread); CloseHandle(process.hProcess); }
+        else {
+            settingsPid = process.dwProcessId;
+            if (!options.updateTrial.empty()) wmf::update::WriteText(options.updateTrial/L"settings.pid",std::to_string(settingsPid));
+            CloseHandle(process.hThread); CloseHandle(process.hProcess);
+        }
     }
     void Enable(bool value) { if (service && !closing) pending.push_back(service->SetEnabled(value)); }
+    void RestartForData(DataLocation target) {
+        if (closing) return;
+        // Fake sessions never launch a production replacement process.
+        if (options.smoke) { service->DataLocationSwitchFailed({Status::InvalidState,ERROR_NOT_SUPPORTED}); return; }
+        const auto saved = store->EnsureSaved();
+        if (!saved) { service->DataLocationSwitchFailed(saved.result); return; }
+        const auto executable = environment.executableDirectory/L"WinMouseFix.Host.exe";
+        const auto wide = [](DataLocation value) { return value == DataLocation::Program ? L"program" : L"appdata"; };
+        std::wstring command = L"\""+executable.wstring()+L"\" --settings --restart-after "+std::to_wstring(GetCurrentProcessId())+L" --storage-from "+wide(environment.dataLocation)+L" --storage-to "+wide(target);
+        { std::lock_guard lock(settingsMutex); if (settingsPid && ProcessImageMatches(settingsPid,SettingsExecutable(environment.executableDirectory))) command += L" --restart-settings "+std::to_wstring(settingsPid); }
+        STARTUPINFOW info{sizeof(info)}; PROCESS_INFORMATION process{};
+        if (!CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,environment.executableDirectory.c_str(),&info,&process)) { service->DataLocationSwitchFailed({Status::NativeFailure,GetLastError()}); return; }
+        CloseHandle(process.hThread); CloseHandle(process.hProcess);
+        service->BeginExit(false);
+    }
+    void BeginUpdate(const std::filesystem::path& tx) {
+        if (options.smoke || closing) { updates->InstallFailed("update-not-available"); return; }
+        try {
+            const auto saved = store->EnsureSaved(); if (!saved) throw std::runtime_error("configuration-save-failed");
+            wmf::update::WriteText(tx/L"data-directory.txt",winrt::to_string(environment.dataDirectory.wstring()));
+            const auto worker = tx/L"worker.exe"; std::filesystem::copy_file(environment.executableDirectory/L"WinMouseFix.Updater.exe",worker,std::filesystem::copy_options::overwrite_existing);
+            auto command = L"\""+worker.wstring()+L"\" --transaction \""+tx.wstring()+L"\" --host-pid "+std::to_wstring(GetCurrentProcessId());
+            { std::lock_guard lock(settingsMutex); if (settingsPid && ProcessImageMatches(settingsPid,SettingsExecutable(environment.executableDirectory))) command += L" --settings-pid "+std::to_wstring(settingsPid); }
+            STARTUPINFOW info{sizeof(info)}; PROCESS_INFORMATION process{};
+            if (!CreateProcessW(worker.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,tx.c_str(),&info,&process)) throw std::runtime_error("updater-start-failed");
+            CloseHandle(process.hThread); updaterProcess = process.hProcess; updateHandoff = tx; handoffStarted = GetTickCount64();
+        } catch (const std::exception& error) { updates->InstallFailed(error.what()); }
+    }
     std::wstring Tip() const {
         if (!runtime) return L"WinMouseFix — 正在准备";
         constexpr const wchar_t* states[]{L"已暂停",L"正在启动",L"已启用",L"发生错误，已暂停",L"正在退出",L"已停止"};
@@ -105,10 +142,30 @@ struct Resident {
     void Tick() {
         if (!runtime || !service) return;
         service->Tick();
-        if (updates && !closing) {
+        if (!options.updateTrial.empty()) {
+            const auto tx = options.updateTrial;
+            if (std::filesystem::exists(tx/L"abort")) {
+                { std::lock_guard lock(settingsMutex); if (settingsWindow && ProcessImageMatches(settingsPid,SettingsExecutable(environment.executableDirectory))) PostMessageW(settingsWindow,WM_CLOSE,0,0); }
+                service->BeginExit(false);
+            } else if (std::filesystem::exists(tx/L"commit.ok") || (!wmf::update::TransactionPending(environment.executableDirectory) && wmf::update::ReadText(tx/L"journal.json").find("completed") != std::string::npos)) {
+                options.updateTrial.clear(); if (updatePermitted) runtime->Enable(store->Current()->config.enabled);
+            }
+        }
+        if (!updateHandoff.empty()) {
+            if (std::filesystem::exists(updateHandoff/L"handoff.ready") && WaitForSingleObject(updaterProcess,0) == WAIT_TIMEOUT) {
+                { std::lock_guard lock(settingsMutex); if (settingsWindow && ProcessImageMatches(settingsPid,SettingsExecutable(environment.executableDirectory))) PostMessageW(settingsWindow,WM_CLOSE,0,0); }
+                service->BeginExit(false); updateHandoff.clear();
+            } else if (WaitForSingleObject(updaterProcess,0) == WAIT_OBJECT_0 || GetTickCount64()-handoffStarted > 60000) {
+                wmf::update::WriteText(updateHandoff/L"handoff.cancel","cancelled");
+                updates->InstallFailed("updater-handoff-failed"); updateHandoff.clear(); CloseHandle(updaterProcess); updaterProcess = nullptr;
+            }
+        }
+        if (updates && !closing && options.updateTrial.empty()) {
             const auto configuration = store->Current();
             updates->Tick(GetTickCount64(),!configuration->recoveryRequired && configuration->config.automaticUpdates,configuration->config.updateIntervalHours);
             if (updates->TakePrompt()) OpenSettings();
+            updates->RequestInstall(); // Download was explicitly approved as download-and-install.
+            if (const auto tx = updates->TakeInstall(); !tx.empty()) BeginUpdate(tx);
         }
         const auto failure = runtime->Failure();
         if (!failure && log && (!faultReported || failure.cleanupError != reportedCleanup)) {
@@ -150,6 +207,7 @@ struct Resident {
                 if (notification == WM_CONTEXTMENU || notification == WM_RBUTTONUP) state->Menu(); return 0;
             }
             if (message == OpenSettingsMessage) { state->OpenSettings(); return 0; }
+            if (message == SwitchDataMessage) { state->RestartForData(static_cast<DataLocation>(a)); return 0; }
             if (message == ExitMessage || message == WM_CLOSE) { state->closing = true; if (state->service) state->service->BeginExit(false); else DestroyWindow(window); return 0; }
             if (message == WM_COMMAND) {
                 switch (LOWORD(a)) { case SettingsId: state->OpenSettings(); break; case ExitId: PostMessageW(window,WM_CLOSE,0,0); break; case ToggleId: state->Enable(state->service && state->service->Recording() ? false : !state->runtime->Requested()); break; case StartupId: state->ToggleStartup(); break; } return 0;
@@ -179,11 +237,31 @@ bool ActivateExisting(const ProductEnvironment& environment) {
 }
 int RunResident(HINSTANCE instance,const Options& options) {
     auto environment = options.smoke ? ProductEnvironment::Simulation(options.output,options.simulationTag) : ProductEnvironment::Production();
+    if (!options.smoke && options.updateTrial.empty() && wmf::update::TransactionPending(environment.executableDirectory)) {
+        const auto tx = wmf::update::PendingTransaction(environment.executableDirectory),worker = tx/L"worker.exe";
+        auto command = L"\""+worker.wstring()+L"\" --recover \""+tx.wstring()+L"\" --host-pid "+std::to_wstring(GetCurrentProcessId());
+        STARTUPINFOW info{sizeof(info)}; PROCESS_INFORMATION process{};
+        if (!CreateProcessW(worker.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,tx.c_str(),&info,&process)) throw std::runtime_error("Cannot recover an interrupted update");
+        CloseHandle(process.hThread); CloseHandle(process.hProcess); return 0;
+    }
+    if (!options.updateTrial.empty()) {
+        wmf::update::CheckTransactionPath(options.updateTrial);
+        if (!wmf::update::TransactionPending(environment.executableDirectory) || !std::filesystem::equivalent(wmf::update::PendingTransaction(environment.executableDirectory),options.updateTrial) || wmf::update::ReadManifest(environment.executableDirectory).version != ProductVersion) throw std::runtime_error("Invalid update verification");
+    }
     UserSecurity security(environment.sid); const auto mutex = CreateMutexW(security.Attributes(),FALSE,environment.hostMutex.c_str()); const auto mutexError = GetLastError();
     if (!mutex) throw std::runtime_error("Cannot create resident instance lock");
     struct Handle { HANDLE h; ~Handle() { CloseHandle(h); } } instanceLock{mutex};
     if (mutexError == ERROR_ALREADY_EXISTS) return options.startup || ActivateExisting(environment) ? 0 : 1;
     InputOwner owner(environment.inputOwnerSuffix); if (!owner.Acquire()) throw std::runtime_error("另一个诊断或输入实例正在运行，请先退出它。");
+    if (!options.smoke && options.updateTrial.empty()) wmf::update::CleanupTransactions(environment.executableDirectory);
+    if (options.migrate) {
+        DataMigration moved;
+        if (environment.dataLocation != options.migrationFrom) moved.result = {Status::InvalidState,ERROR_REVISION_MISMATCH};
+        else moved = MigrateData(environment.dataPaths,options.migrationFrom,options.migrationTo);
+        if (!moved.result) MessageBoxW(nullptr,L"配置迁移未完成，已保留原配置位置和数据。请检查目标目录的写入权限、磁盘空间或文件占用后重试。",L"Win Mouse Fix",MB_OK|MB_ICONWARNING);
+        else if (moved.sourceRetained) MessageBoxW(nullptr,L"配置已切换成功。原目录被占用，旧数据仍保留在原位置。",L"Win Mouse Fix",MB_OK|MB_ICONINFORMATION);
+        environment.dataLocation = ReadDataLocation(environment.dataPaths); environment.dataDirectory = environment.dataPaths.Directory(environment.dataLocation);
+    }
     NativeModules modules; std::wstring moduleError; if (!modules.Load(environment.executableDirectory,moduleError)) throw std::runtime_error(Utf8(moduleError));
     Resident state; state.instance = instance; state.options = options; state.environment = environment; state.started = GetTickCount64();
     WNDCLASSEXW cls{sizeof(cls)}; cls.hInstance = instance; cls.lpszClassName = ClassName; cls.lpfnWndProc = Resident::Procedure; cls.hCursor = LoadCursorW(nullptr,IDC_ARROW); cls.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
@@ -204,17 +282,28 @@ int RunResident(HINSTANCE instance,const Options& options) {
     state.store = std::make_unique<ConfigStore>(std::make_unique<NativeConfigFiles>(environment.dataDirectory)); state.store->Load();
     const auto configuration = state.store->Current();
     Capabilities nativeCaps; const auto queried = options.smoke ? state.simulation.RuntimeApi().engine.capabilities(&nativeCaps) : WmfPlatformCapabilities(&nativeCaps);
+    if (!options.updateTrial.empty() && (!queried || configuration->recoveryRequired)) throw std::runtime_error("Updated Host did not pass configuration/module health checks");
     state.evidence = std::make_unique<CapabilityEvidence>(environment,nativeCaps);
     const std::uint32_t validatedFlags = queried && !options.smoke ? state.evidence->Flags() : 0;
     state.runtime = options.smoke ? std::make_unique<ProductRuntime>(environment,configuration->config.input,false,state.simulation.RuntimeApi()) : std::make_unique<ProductRuntime>(environment,configuration->config.input,false,ProductRuntimeApi{},validatedFlags);
     state.startup = std::make_unique<StartupRegistration>(environment,environment.executableDirectory/L"WinMouseFix.Host.exe",options.smoke ? state.simulation.Startup() : RealStartupApi());
     state.log = std::make_unique<ProductLog>(environment.dataDirectory/L"logs",*state.runtime,configuration->config.input.qpcFrequency,options.smoke);
     ProductServiceApi api; api.simulation = options.smoke; api.validatedFlags = validatedFlags; if (options.smoke) api.capabilities = state.simulation.RuntimeApi().engine.capabilities;
-    state.updates = std::make_unique<UpdateService>(options.smoke,environment.dataDirectory/L"update-reminder.txt",options.smoke ? UpdateFetch{[](unsigned,std::stop_token) { return std::string("[]"); }} : UpdateFetch{});
+    state.updates = std::make_unique<UpdateService>(options.smoke,environment.dataDirectory/L"update-reminder.txt",options.smoke ? UpdateFetch{[](unsigned,std::stop_token) { return std::string("[]"); }} : UpdateFetch{},options.smoke ? std::filesystem::path{} : environment.executableDirectory);
     api.updateStatus = [&] { return state.updates->StatusJson(); }; api.checkUpdates = [&] { state.updates->Request(GetTickCount64()); };
     api.acknowledgeUpdate = [&](std::uint64_t id) { state.updates->Acknowledge(id); };
+    api.downloadUpdate = [&](std::uint64_t id) { return state.updates->Download(id); }; api.cancelUpdate = [&] { return state.updates->CancelDownload(); };
+    api.installUpdate = [&] { return state.updates->RequestInstall(); }; api.updateBusy = [&] { return state.updates->Busy(); };
+    api.switchDataLocation = [&](DataLocation target) -> Result { return PostMessageW(state.window,SwitchDataMessage,static_cast<WPARAM>(target),0) ? Result{} : Result{Status::NativeFailure,GetLastError()}; };
     api.openSettings = [&] { PostMessageW(state.window,OpenSettingsMessage,0,0); }; api.requestExit = [&] { state.closing = true; };
-    api.settingsWindow = [&](DWORD pid,std::uint64_t window) { std::lock_guard lock(state.settingsMutex); state.settingsPid = pid; state.settingsWindow = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window)); };
+    api.settingsWindow = [&](DWORD pid,std::uint64_t window) {
+        std::lock_guard lock(state.settingsMutex); state.settingsPid = pid; state.settingsWindow = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window));
+        if (!options.updateTrial.empty()) wmf::update::WriteText(options.updateTrial/L"settings.pid",std::to_string(pid));
+    };
+    api.settingsReady = [&](DWORD pid) {
+        std::lock_guard lock(state.settingsMutex);
+        if (!options.updateTrial.empty() && pid == state.settingsPid && state.settingsWindow && IsWindowVisible(state.settingsWindow)) wmf::update::WriteText(options.updateTrial/L"health.ready",ProductVersion);
+    };
     api.isSettingsProcess = [&](DWORD pid) { return options.smoke || ProcessImageMatches(pid,SettingsExecutable(environment.executableDirectory)); };
     api.logError = [&] { return state.log->Error(); }; api.startTrace = [&] { state.log->DetailFor(); };
     api.exportDiagnostics = [&] { return state.log->Export(state.service->StatusJson(),SerializeConfig(state.store->Current()->config)); };
@@ -228,16 +317,17 @@ int RunResident(HINSTANCE instance,const Options& options) {
     if (!SetTimer(state.window,1,options.smoke ? 50 : 200,nullptr)) throw std::runtime_error("Cannot start resident status timer");
     state.log->Record("startup","WinMouseFix "+std::string(ProductVersion)+"; x64; SDK 10.0.28000.0; simulation="+std::to_string(options.smoke),configuration->config.input.revision);
     if (options.trace) state.log->DetailFor();
-    bool permitted = configuration->config.input.wheelMode == WheelMode::Off || (validatedFlags & WheelSourceValidated);
+    bool limited = configuration->config.input.wheelMode != WheelMode::Off && !(validatedFlags & WheelSourceValidated);
     for (unsigned i = 0; i < configuration->config.input.bindingCount; ++i)
-        if (configuration->config.input.bindings[i].action == Action::NativeZoom && !(validatedFlags & NativeZoomValidated)) permitted = false;
-    if (!permitted) state.log->Record("validation-expired","Wheel/pinch validation is missing or belongs to a different OS patch or engine build; paused");
-    if (!options.smoke && permitted && !configuration->recoveryRequired && !state.lastTip.empty()) state.runtime->Enable(configuration->config.enabled);
-    if (!configuration->recoveryRequired && !state.lastTip.empty()) {
+        if (configuration->config.input.bindings[i].action == Action::NativeZoom && !(validatedFlags & NativeZoomValidated)) limited = true;
+    if (limited) state.log->Record("validation-expired","Unverified wheel/pinch actions are inactive; other bindings remain available");
+    state.updatePermitted = !configuration->recoveryRequired && !state.lastTip.empty();
+    if (!options.smoke && state.updatePermitted && options.updateTrial.empty()) state.runtime->Enable(configuration->config.enabled);
+    if (!configuration->recoveryRequired && !state.lastTip.empty() && options.updateTrial.empty()) {
         const auto notice = state.tray->NotifyStartup(configuration->config.startupNotification);
         if (!notice) state.log->Record("startup-notification-error",JsonResult(notice),configuration->config.input.revision);
     }
-    if (options.settings) state.OpenSettings();
+    if (options.settings || !options.updateTrial.empty()) state.OpenSettings();
     MSG message{}; int result{}; while ((result = GetMessageW(&message,nullptr,0,0)) > 0) { if (!IsDialogMessageW(state.window,&message)) { TranslateMessage(&message); DispatchMessageW(&message); } }
     state.service->Stop(); state.tray->Remove();
     if (state.runtime->RequiresProcessExit() && !options.smoke) {
@@ -265,15 +355,43 @@ bool TryRunResidentMode(HINSTANCE instance,int& result) {
     for (std::size_t i = 0; i < arguments.size(); ++i) {
         const auto& argument = arguments[i];
         if (argument == L"--settings") options.settings = true; else if (argument == L"--startup") options.startup = true;
+        else if (argument == L"--update-verify" && i+1 < arguments.size()) options.updateTrial = std::filesystem::absolute(arguments[++i]);
         else if (argument == L"--resident-smoke") options.smoke = true; else if (argument == L"--trace") options.trace = true;
         else if (argument == L"--resident") {} else if (argument == L"--output" && i+1 < arguments.size()) options.output = std::filesystem::absolute(arguments[++i]);
+        else if (argument == L"--restart-after" && i+1 < arguments.size()) { options.restartAfter = static_cast<DWORD>(std::stoul(arguments[++i])); if (!options.restartAfter || options.restartAfter == GetCurrentProcessId()) throw std::runtime_error("Invalid restart parent"); }
+        else if (argument == L"--restart-settings" && i+1 < arguments.size()) options.restartSettings = static_cast<DWORD>(std::stoul(arguments[++i]));
+        else if ((argument == L"--storage-from" || argument == L"--storage-to") && i+1 < arguments.size()) {
+            const auto mode = arguments[++i]; if (mode != L"appdata" && mode != L"program") throw std::runtime_error("Invalid storage location");
+            const auto location = mode == L"program" ? DataLocation::Program : DataLocation::AppData;
+            if (argument == L"--storage-from") options.migrationFrom = location; else { options.migrationTo = location; options.migrate = true; }
+        }
         else if (argument == L"--simulation-scope" && i+1 < arguments.size()) options.simulationTag = arguments[++i];
         else if (argument == L"--smoke-hold-ms" && i+1 < arguments.size()) { options.smokeHoldMs = static_cast<unsigned>(std::stoul(arguments[++i])); if (options.smokeHoldMs > 8000) throw std::runtime_error("Smoke hold must be <= 8000 ms"); }
         else throw std::runtime_error("Unknown resident argument");
     }
     if (options.smoke && options.output.empty()) throw std::runtime_error("Resident smoke requires an explicit isolated output directory");
+    if (!options.updateTrial.empty() && (options.smoke || options.migrate || options.restartAfter)) throw std::runtime_error("Invalid update verification arguments");
     if (!options.smoke && !options.output.empty()) throw std::runtime_error("--output is only supported by isolated resident smoke");
     if (!options.smoke && (!options.simulationTag.empty() || options.smokeHoldMs)) throw std::runtime_error("Shared simulation arguments require --resident-smoke");
+    if (options.migrate && (!options.restartAfter || options.smoke || options.migrationFrom == options.migrationTo)) throw std::runtime_error("Storage relocation requires an explicit production restart");
+    if (options.restartSettings && !options.migrate) throw std::runtime_error("Settings handoff requires a storage relocation");
+    if (options.restartAfter) {
+        const auto environment = ProductEnvironment::Production(false);
+        HANDLE parent = OpenProcess(SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION,FALSE,options.restartAfter);
+        if (parent) {
+            const bool matches = ProcessImageMatches(options.restartAfter,environment.executableDirectory/L"WinMouseFix.Host.exe");
+            const auto waited = matches ? WaitForSingleObject(parent,30000) : WAIT_FAILED; CloseHandle(parent);
+            if (!matches || waited != WAIT_OBJECT_0) throw std::runtime_error("Previous Host did not exit safely; relocation was not started");
+        } else if (GetLastError() != ERROR_INVALID_PARAMETER) throw std::runtime_error("Cannot verify the previous Host");
+        if (options.restartSettings) {
+            HANDLE settings = OpenProcess(SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION,FALSE,options.restartSettings);
+            if (settings) {
+                const bool matches = ProcessImageMatches(options.restartSettings,SettingsExecutable(environment.executableDirectory));
+                const auto waited = matches ? WaitForSingleObject(settings,30000) : WAIT_FAILED; CloseHandle(settings);
+                if (!matches || waited != WAIT_OBJECT_0) throw std::runtime_error("Settings did not finish saving; relocation was not started");
+            } else if (GetLastError() != ERROR_INVALID_PARAMETER) throw std::runtime_error("Cannot verify Settings shutdown");
+        }
+    }
     result = RunResident(instance,options); return true;
 }
 }

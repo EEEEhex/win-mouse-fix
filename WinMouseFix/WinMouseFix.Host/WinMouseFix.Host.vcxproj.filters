@@ -226,4 +226,4 @@
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
-<ItemGroup><ClCompile Include="UpdateService.cpp"><Filter>源文件</Filter></ClCompile><ClInclude Include="UpdateService.h"><Filter>头文件</Filter></ClInclude><ClInclude Include="ProductVersion.h"><Filter>头文件</Filter></ClInclude></ItemGroup></Project>
+<ItemGroup><ClCompile Include="UpdateService.cpp"><Filter>源文件</Filter></ClCompile><ClInclude Include="UpdateService.h"><Filter>头文件</Filter></ClInclude><ClInclude Include="ProductVersion.h"><Filter>头文件</Filter></ClInclude></ItemGroup><ItemGroup><ClCompile Include="DataLocation.cpp"><Filter>源文件</Filter></ClCompile><ClInclude Include="DataLocation.h"><Filter>头文件</Filter></ClInclude></ItemGroup></Project>

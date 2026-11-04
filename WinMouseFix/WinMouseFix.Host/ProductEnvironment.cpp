@@ -40,21 +40,24 @@ bool Within(const std::filesystem::path& child,const std::filesystem::path& pare
     return c.size() == p.size() || c[p.size()] == L'\\' || c[p.size()] == L'/';
 }
 }
-ProductEnvironment ProductEnvironment::Production() {
+ProductEnvironment ProductEnvironment::Production(bool resolveDataLocation) {
     ProductEnvironment e; e.sid = Sid(); e.dataDirectory = UserData();
     if (!ProcessIdToSessionId(GetCurrentProcessId(),&e.session)) throw std::runtime_error("Cannot identify current Windows session");
     wchar_t executable[32768]{};
     const auto count = GetModuleFileNameW(nullptr,executable,static_cast<DWORD>(std::size(executable)));
     if (!count || count >= std::size(executable)) throw std::runtime_error("Cannot locate executable directory");
     e.executableDirectory = std::filesystem::path(executable).parent_path();
+    e.dataPaths = {e.dataDirectory,e.executableDirectory/L"Data",e.executableDirectory/L"WinMouseFix.storage.json"};
+    if (resolveDataLocation) { e.dataLocation = ReadDataLocation(e.dataPaths); e.dataDirectory = e.dataPaths.Directory(e.dataLocation); }
     e.scope = L"WinMouseFix.v1."+e.sid+L"."+std::to_wstring(e.session)+L"."+DesktopHash(); Names(e); return e;
 }
 ProductEnvironment ProductEnvironment::Simulation(const std::filesystem::path& repository,std::wstring_view instanceTag) {
-    auto e = Production(); static std::atomic<std::uint64_t> serial{}; LARGE_INTEGER time{}; QueryPerformanceCounter(&time);
+    auto e = Production(false); static std::atomic<std::uint64_t> serial{}; LARGE_INTEGER time{}; QueryPerformanceCounter(&time);
     const auto unique = std::to_wstring(GetCurrentProcessId())+L"."+std::to_wstring(time.QuadPart)+L"."+std::to_wstring(++serial);
     const auto directory = std::filesystem::absolute(repository)/L"artifacts/product-validation/isolated"/unique;
     if (Within(directory,e.dataDirectory)) throw std::runtime_error("Simulation directory overlaps production user data");
     e.dataDirectory = std::filesystem::weakly_canonical(directory); e.simulation = true;
+    e.dataPaths = {e.dataDirectory,e.dataDirectory.parent_path()/(unique+L"-program-data"),e.dataDirectory.parent_path()/(unique+L"-storage.json")};
     if (instanceTag.size() > 64 || instanceTag.find_first_not_of(L"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-") != std::wstring_view::npos)
         throw std::invalid_argument("Invalid shared simulation tag");
     const auto identity = instanceTag.empty() ? unique : std::wstring(instanceTag);

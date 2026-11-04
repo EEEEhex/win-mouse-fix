@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup>
+    <ClCompile><PreprocessorDefinitions>MINIZ_NO_ZLIB_APIS;MINIZ_NO_DEFLATE_APIS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <Link><AdditionalDependencies>bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)UpdatePackage.cpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)UpdatePackage.h" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\ThirdParty\miniz\miniz.c"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\ThirdParty\miniz\miniz_tinfl.c"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
+    <ClCompile Include="$(MSBuildThisFileDirectory)..\..\ThirdParty\miniz\miniz_zip.c"><WarningLevel>TurnOffAllWarnings</WarningLevel></ClCompile>
+  </ItemGroup>
+</Project>

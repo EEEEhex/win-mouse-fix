@@ -30,7 +30,10 @@ public sealed partial class MainWindow : Window
     private Process? _hostProcess;
     private bool _hostLost;
     private ToggleSwitch? _automaticUpdates;
+    private Control? _checkUpdatesButton;
     private ToggleSwitch? _startup, _startupNotice;
+    private ComboBox? _dataLocation;
+    private TextBlock? _dataLocationNote;
     private Expander? _moreSettings, _advancedSettings;
     private readonly Dictionary<uint,ComboBox> _bindingActions = [];
     private readonly List<Control> _bindingControls = [];
@@ -82,6 +85,7 @@ public sealed partial class MainWindow : Window
             if (_hostProcess.HasExited) throw new IOException(UiText.Get("后台已退出。"));
         }
     }
+    public async Task MarkReadyAsync() { var reply = await _session.ReadyAsync(); if (!reply.Ok) throw new IOException(reply.Message); }
     private void LocalizeNavigation() {
         var labels = new[]{UiText.Get("通用"),UiText.Get("按键"),UiText.Get("滚动"),UiText.Get("关于")};
         for (int i = 0; i < labels.Length; ++i) {
@@ -100,7 +104,7 @@ public sealed partial class MainWindow : Window
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args) { if (Model is null || args.SelectedItem is not NavigationViewItem item) return; _page = (string)item.Tag; BuildPage(); }
     public void Navigate(string tag) { Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == tag); }
     private void BuildPage() {
-        _refresh.Clear(); _hostControls.Clear(); PageContent.Children.Clear(); _bindings = null; _bindingActions.Clear(); _bindingControls.Clear(); _bindingStructure = ""; _enabled = null; _automaticUpdates = null; _startup = null; _startupNotice = null; _moreSettings = null; _advancedSettings = null; _runtime = null; _capability = null;
+        _refresh.Clear(); _hostControls.Clear(); PageContent.Children.Clear(); _bindings = null; _bindingActions.Clear(); _bindingControls.Clear(); _bindingStructure = ""; _enabled = null; _automaticUpdates = null; _startup = null; _startupNotice = null; _dataLocation = null; _dataLocationNote = null; _moreSettings = null; _advancedSettings = null; _runtime = null; _capability = null;
         switch (_page) { case "general": General(); break; case "buttons": Buttons(); break; case "scrolling": Scrolling(); break; default: About(); break; }
         RefreshControls(); RefreshState();
         PageScroll.ChangeView(null,0,null,true);
@@ -134,6 +138,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(_automaticUpdates,UiText.Get("自动更新"));
         _automaticUpdates.Toggled += async (_,_) => { if (!_updating) { Model.Edit(c => c.AutomaticUpdates = _automaticUpdates.IsOn); await Model.FlushAsync(); } }; _refresh.Add(c => _automaticUpdates.IsOn = c.AutomaticUpdates);
         var checkUpdates = RequiresHost(Button(UiText.Get("检查更新"),CheckForUpdatesAsync)); checkUpdates.HorizontalAlignment = HorizontalAlignment.Right; checkUpdates.VerticalAlignment = VerticalAlignment.Center;
+        _checkUpdatesButton = checkUpdates;
         var updateDetails = new Grid { ColumnSpacing = 24 }; updateDetails.ColumnDefinitions.Add(new() { Width = new(1,GridUnitType.Star) }); updateDetails.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var updateNote = Secondary(UiText.Get("启动时及按设定间隔检查，有新版本时提醒。")); updateNote.VerticalAlignment = VerticalAlignment.Center; updateDetails.Children.Add(updateNote); Grid.SetColumn(checkUpdates,1); updateDetails.Children.Add(checkUpdates);
         var interval = RequiresHost(new NumberBox { Minimum = 1, Maximum = 168, SmallChange = 1, LargeChange = 6, Width = 130, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline });
@@ -150,7 +155,10 @@ public sealed partial class MainWindow : Window
         language.SelectionChanged += async (_,_) => { _preferences.Language = UiText.Language = language.SelectedIndex == 0 ? "zh-Hans" : "en"; _preferences.Save(_endpoint.PreferencesDirectory,AppWindow); LocalizeNavigation(); BuildPage(); if (Model.Connected) await Model.ReloadAsync(); };
         var preferences = new Grid { ColumnSpacing = 20 }; preferences.ColumnDefinitions.Add(new() { Width = new(1,GridUnitType.Star) }); preferences.ColumnDefinitions.Add(new() { Width = new(1,GridUnitType.Star) });
         preferences.Children.Add(theme); Grid.SetColumn(language,1); preferences.Children.Add(language);
-        var moreContent = Stack(preferences,Separator(),actions); moreContent.Margin = new(0,12,0,0);
+        var dataLocation = _dataLocation = RequiresHost(new ComboBox { Header = UiText.Get("配置保存位置"), HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[]{UiText.Get("保存到 Appdata 目录"),UiText.Get("保存到程序所在目录")} });
+        dataLocation.SelectionChanged += async (_,_) => { if (!_updating && dataLocation.SelectedIndex >= 0) { var mode = dataLocation.SelectedIndex == 1 ? "program" : "appdata"; if (mode != Model.Status.Storage.Location) { _preferences.Save(_endpoint.PreferencesDirectory,AppWindow); await Model.SetDataLocationAsync(mode); RefreshState(); } } };
+        _dataLocationNote = Secondary(""); _dataLocationNote.IsTextSelectionEnabled = true;
+        var moreContent = Stack(preferences,Separator(),dataLocation,_dataLocationNote,Separator(),actions); moreContent.Margin = new(0,12,0,0);
         _moreSettings = new Expander { Header = UiText.Get("更多设置"), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Content = moreContent }; PageContent.Children.Add(_moreSettings);
     }
     private void Buttons() {
@@ -199,7 +207,7 @@ public sealed partial class MainWindow : Window
         } finally { _updating = wasUpdating; }
     }
     private void RefreshBindingAvailability() {
-        foreach(var control in _bindingControls) control.IsEnabled = Model.Connected && !_closing && !Model.Saving;
+        foreach(var control in _bindingControls) control.IsEnabled = Model.Connected && !_closing && !Model.Saving && !UpdateBusy;
         foreach(var selector in _bindingActions.Values) foreach(var item in selector.Items.OfType<ComboBoxItem>()) item.IsEnabled = (string)item.Tag != "native-zoom" || ZoomAvailable();
     }
     private async Task ChangeBindingActionAsync(uint id,string action) {
@@ -313,13 +321,19 @@ public sealed partial class MainWindow : Window
         if (!_endpoint.Simulation && Model.Status.ExitRequested && !_closing) { _hostLost = true; Close(); return; }
         if (Model is null) return; ConnectionBar.Message = _uiError ?? Model.Message; ConnectionBar.Severity = _uiError is not null || !Model.Connected || Model.Issue is not null || Model.Status.StartupError != 0 || Model.Status.LogError != 0 ? InfoBarSeverity.Warning : Model.Saving ? InfoBarSeverity.Informational : InfoBarSeverity.Success;
         ConnectionBar.IsOpen = ConnectionBar.Severity != InfoBarSeverity.Success;
-        foreach(var item in _hostControls) item.Key.IsEnabled = Model.Connected && !_closing && item.Value();
+        foreach(var item in _hostControls) item.Key.IsEnabled = Model.Connected && !_closing && !Model.Status.Storage.Switching && (!UpdateBusy || (item.Key == _checkUpdatesButton && Model.Status.Update.State != "installing")) && item.Value();
         if (_bindingEditor is not null && _bindingDialog is not null) { _bindingEditor.SetIdentificationState(Model.Status.Recording); _bindingEditor.IsEnabled = Model.Connected && !Model.Saving; _bindingDialog.IsPrimaryButtonEnabled = Model.Connected && !Model.Saving && !_bindingEditor.ShortcutRecording; }
         RefreshBindingAvailability();
         if (_lastConnected != Model.Connected) { _lastConnected = Model.Connected; RefreshBindings(); }
         _updating = true;
-        if (_enabled is not null) { _enabled.IsOn = Model.Status.Requested; _enabled.IsEnabled = Model.Connected && !_closing; }
+        if (_dataLocation is not null && !Model.Status.Storage.Switching) _dataLocation.SelectedIndex = Model.Status.Storage.Location == "program" ? 1 : 0;
+        if (_dataLocationNote is not null) _dataLocationNote.Text = UiText.Get("切换后自动迁移数据并重启，旧数据保留备份。程序目录模式使用同级 Data 文件夹。")+(string.IsNullOrEmpty(Model.Status.Storage.Directory) ? "" : "\n"+Model.Status.Storage.Directory);
+        if (Model.Status.Storage.Switching) { ConnectionBar.Message = UiText.Get("正在迁移配置，后台和设置将自动重启…"); ConnectionBar.Severity = InfoBarSeverity.Informational; ConnectionBar.IsOpen = true; }
+        else if (Model.Status.Storage.NativeError != 0) { ConnectionBar.Message = UiText.Get("无法开始迁移，请检查目录权限后重试。"); ConnectionBar.Severity = InfoBarSeverity.Warning; ConnectionBar.IsOpen = true; }
+        if (_enabled is not null) { _enabled.IsOn = Model.Status.Requested; _enabled.IsEnabled = Model.Connected && !_closing && !Model.Status.Storage.Switching && !UpdateBusy; }
         if (_runtime is not null) _runtime.Text = Model.Status.State switch { "enabled" => UiText.Get("后台已启用"), "starting" => UiText.Get("正在启动输入引擎…"), "faulted" => UiText.Format("后台发生错误，已停止接管。错误 {0}，清理 {1}",Model.Status.Failure.NativeError,Model.Status.Failure.CleanupError), "stopping" => UiText.Get("正在退出，请松开仍按住的侧键。"), _ => UiText.Get("后台已暂停，普通输入保持原样。") };
+        if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") && !ZoomAvailable())
+            _runtime.Text += "\n"+UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。");
         if (_capability is not null) _capability.Text = Model.Status.Capabilities.FirstOrDefault(c => c.Name == "wheel")?.State switch { "supported" => UiText.Get("滚轮增强可用。"), "unavailable" => UiText.Get("当前系统不支持滚轮增强。"), _ => UiText.Get("滚轮增强暂不可用，普通滚轮保持原有行为。") };
         if (_identifyButton is not null && Model.Status.RecordedButton is { } found && found.Serial > _lastIdentifiedSerial) { _lastIdentifiedSerial = found.Serial; _identifyButton.SelectedIndex = found.Button == "back" ? 0 : found.Button == "forward" ? 1 : found.Button == "middle" ? 2 : -1; if (_identifyModifiers is not null) for(int i = 0; i < 4; ++i) _identifyModifiers[i].IsChecked = (found.Modifiers & (1u<<i)) != 0; }
         _updating = false;
@@ -435,6 +449,12 @@ public sealed partial class MainWindow : Window
                 var noticeBefore = Model.Committed.StartupNotification; _startupNotice!.IsOn = !noticeBefore; await Task.Delay(150); await Model.ReloadAsync();
                 if (Model.Committed.StartupNotification != !noticeBefore || _startupNotice.IsOn != !noticeBefore) throw new InvalidOperationException("Startup notification preference did not persist through Host ACK/reload.");
                 _startupNotice.IsOn = noticeBefore; await Task.Delay(150);
+                _dataLocation!.SelectedIndex = 1; await Task.Delay(150);
+                if (Model.Status.Storage.Location != "program") throw new InvalidOperationException("Program data location did not reach the Host.");
+                ((FakeHostSession)_session).RejectNext = true; _dataLocation.SelectedIndex = 0; await Task.Delay(150);
+                if (Model.Status.Storage.Location != "program" || _dataLocation.SelectedIndex != 1) throw new InvalidOperationException("Rejected data relocation changed the current location.");
+                _dataLocation.SelectedIndex = 0; await Task.Delay(150);
+                if (Model.Status.Storage.Location != "appdata") throw new InvalidOperationException("AppData data location was not restored.");
             }
             if (page == "buttons") {
                 var selector = _bindingActions[1]; selector.SelectedItem = selector.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == "forward"); await Task.Delay(200);
@@ -452,6 +472,15 @@ public sealed partial class MainWindow : Window
             if (page == "general") { _moreSettings!.IsExpanded = true; await Task.Delay(350); PageScroll.ChangeView(null,PageScroll.ScrollableHeight,null,true); await Task.Delay(150); await CaptureAsync(Root,Path.Combine(directory,"general-more.png")); _moreSettings.IsExpanded = false; PageScroll.ChangeView(null,0,null,true); await Task.Delay(200); }
         }
         await RunUpdateSmokeAsync(directory);
+        var zoomId = Model.Committed.Bindings.Max(b => b.Id)+1;
+        var wasEnabled = Model.Committed.Enabled;
+        if (!await Model.SaveBindingAsync(new() { Id=zoomId,Button="back",Trigger="wheel",Action="native-zoom" })) throw new InvalidOperationException("Failed to prepare isolated existing zoom binding.");
+        await Model.SetEnabledAsync(true); if (!Model.Committed.Enabled) throw new InvalidOperationException("An existing unverified zoom binding blocked enable.");
+        Navigate("general"); await Task.Delay(150);
+        if (_enabled is null || !_enabled.IsEnabled || _runtime is null || !_runtime.Text.Contains(UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。"))) throw new InvalidOperationException("Optional zoom availability warning or enable control missing.");
+        await CaptureAsync(Root,Path.Combine(directory,"general-zoom-unverified.png"));
+        Model.Edit(c => c.Bindings.RemoveAll(b => b.Id==zoomId)); if (!await Model.FlushAsync()) throw new InvalidOperationException("Failed to restore isolated zoom smoke configuration.");
+        await Model.SetEnabledAsync(wasEnabled); if (Model.Committed.Enabled!=wasEnabled) throw new InvalidOperationException("Failed to restore isolated enable state.");
         await RunBindingEditorSmokeAsync(directory);
         Model.Edit(c => c.Content.MmPerCountX = 0.25); if (!await Model.FlushAsync() || Model.Committed.Content.MmPerCountX != 0.25) throw new InvalidOperationException("UI configuration did not reach fake Host ACK.");
         await Model.RecordAsync(true); await Model.RecordAsync(false);

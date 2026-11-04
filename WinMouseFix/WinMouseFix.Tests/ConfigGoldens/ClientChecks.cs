@@ -63,6 +63,20 @@ internal static class ClientChecks
         var updateReply = await noticeFake.CheckUpdatesAsync(); Check(updateReply.Ok && noticeFake.Status.Update.State == "current");
         noticeFake.NextUpdate = new() { State="available",Version="2.1.0",NotificationPending=true }; await noticeFake.CheckUpdatesAsync();
         Check(noticeFake.Status.Update.NotificationPending); await noticeFake.AcknowledgeUpdateAsync(noticeFake.Status.Update.CompletedId); Check(!noticeFake.Status.Update.NotificationPending);
+        noticeFake.Status.Update.CanInstall = true;
+        Check(!(await noticeFake.DownloadUpdateAsync(999)).Ok);
+        Check((await noticeFake.DownloadUpdateAsync(noticeFake.Status.Update.CompletedId)).Ok);
+        Check(noticeModel.Status.Update.State == "downloading" && noticeModel.Status.Update.TotalBytes > noticeModel.Status.Update.ReceivedBytes);
+        Check((await noticeFake.CancelUpdateAsync()).Ok && noticeModel.Status.Update.State == "cancelled");
+        Check((await noticeFake.DownloadUpdateAsync(noticeFake.Status.Update.CompletedId)).Ok);
+        noticeFake.Status.Update.State = "ready";
+        Check((await noticeFake.InstallUpdateAsync()).Ok && noticeModel.Status.Update.State == "installing");
+        noticeFake.Status.Update.State = "current";
+        var revisionBeforeMove = noticeModel.Committed.Revision;
+        Check(await noticeModel.SetDataLocationAsync("program") && noticeModel.Status.Storage.Location == "program");
+        Check(noticeModel.Committed.Revision == revisionBeforeMove);
+        noticeFake.RejectNext = true; Check(!await noticeModel.SetDataLocationAsync("appdata")); Check(noticeModel.Status.Storage.Location == "program");
+        Check(await noticeModel.SetDataLocationAsync("appdata") && noticeModel.Status.Storage.Location == "appdata");
         return checks;
     }
     [SupportedOSPlatform("windows")]
