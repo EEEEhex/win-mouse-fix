@@ -10,6 +10,7 @@ struct ProductConfig {
     BindingConfig input{DefaultBindingConfig()};
     bool enabled{},startup{};
     bool startupNotification{true};
+    bool disableInFullscreen{};
     bool automaticUpdates{};
     std::uint32_t updateIntervalHours{6};
 };

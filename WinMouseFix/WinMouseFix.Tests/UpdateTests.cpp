@@ -37,7 +37,8 @@ void Scheduling() {
         UpdateService updates(true,file,[&](unsigned page,std::stop_token) { ++calls; if (page != 1) throw std::runtime_error("Unexpected page"); return std::string(Releases); });
         updates.Tick(1000,false,6); VERIFY(calls == 0);
         updates.Tick(1000,true,6); VERIFY(Finished(updates,1)); VERIFY(calls == 1 && State(updates).GetNamedString(L"state") == L"available");
-        VERIFY(updates.TakePrompt()); VERIFY(!updates.TakePrompt()); updates.Acknowledge(999); VERIFY(State(updates).GetNamedBoolean(L"notificationPending"));
+        VERIFY(!updates.TakePrompt(false)); VERIFY(State(updates).GetNamedBoolean(L"notificationPending"));
+        VERIFY(!updates.TakePrompt(false)); VERIFY(updates.TakePrompt()); VERIFY(!updates.TakePrompt()); updates.Acknowledge(999); VERIFY(State(updates).GetNamedBoolean(L"notificationPending"));
         updates.Acknowledge(1); VERIFY(!State(updates).GetNamedBoolean(L"notificationPending"));
         updates.Tick(1000+6*3600000-1,true,6); VERIFY(calls == 1);
         updates.Tick(1000+6*3600000,true,6); VERIFY(Finished(updates,2)); VERIFY(calls == 2 && !updates.TakePrompt());

@@ -77,6 +77,13 @@ internal static class ClientChecks
         Check(noticeModel.Committed.Revision == revisionBeforeMove);
         noticeFake.RejectNext = true; Check(!await noticeModel.SetDataLocationAsync("appdata")); Check(noticeModel.Status.Storage.Location == "program");
         Check(await noticeModel.SetDataLocationAsync("appdata") && noticeModel.Status.Storage.Location == "appdata");
+        var fullscreenFake=new FakeHostSession(); await using var fullscreenModel=new SettingsModel(fullscreenFake,action => action()); await fullscreenModel.ConnectAsync(0);
+        fullscreenModel.Edit(c => c.DisableInFullscreen=true); Check(await fullscreenModel.FlushAsync()); await fullscreenModel.SetEnabledAsync(true);
+        fullscreenFake.SetFullscreen(true); Check(fullscreenModel.Status.Requested && fullscreenModel.Status.FullscreenPaused && fullscreenModel.Status.State=="paused");
+        await fullscreenModel.ReloadAsync(); Check(fullscreenModel.Committed.Enabled && fullscreenModel.Committed.DisableInFullscreen);
+        await fullscreenModel.SetEnabledAsync(false); fullscreenFake.SetFullscreen(false); Check(!fullscreenModel.Status.Requested && !fullscreenModel.Status.FullscreenPaused);
+        fullscreenFake.SetFullscreen(true); await fullscreenModel.SetEnabledAsync(true);
+        fullscreenModel.Edit(c => c.DisableInFullscreen=false); Check(await fullscreenModel.FlushAsync()); Check(fullscreenModel.Status.State=="enabled" && !fullscreenModel.Status.FullscreenPaused);
         return checks;
     }
     [SupportedOSPlatform("windows")]

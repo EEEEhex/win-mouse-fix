@@ -20,12 +20,12 @@ public sealed partial class MainWindow
     private bool UpdateBusy => Model.Status.Update.State is "downloading" or "verifying" or "ready" or "installing";
     private async Task CheckForUpdatesAsync() => await ShowUpdateAsync(null);
     private void TryShowUpdateReminder() {
-        if (!Model.Connected || _closing || _updateDialog is not null || _bindingDialog is not null || Root.XamlRoot is null || !Model.Status.Update.NotificationPending) return;
+        if (!Model.Connected || _closing || Model.Status.FullscreenDetected || _updateDialog is not null || _bindingDialog is not null || Root.XamlRoot is null || !Model.Status.Update.NotificationPending) return;
         if (VisualTreeHelper.GetOpenPopupsForXamlRoot(Root.XamlRoot).Any(p => p.IsOpen)) return;
         _ = ShowUpdateAsync(Model.Status.Update);
     }
     private async Task ShowUpdateAsync(UpdateStatus? automatic) {
-        if (_updateDialog is not null || _closing) return;
+        if (_updateDialog is not null || _closing || (automatic is not null && Model.Status.FullscreenDetected)) return;
         var dialog = _updateDialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = UiText.Get("检查更新"), CloseButtonText = UiText.Get("取消"), DefaultButton = ContentDialogButton.Close };
         bool closed = false; bool acting = false; dialog.Closed += (_,_) => closed = true;
         dialog.Content = Stack(new ProgressRing { IsActive = true, Width = 28, Height = 28 },Text(UiText.Get("正在检查 GitHub Releases…")));
@@ -161,7 +161,9 @@ public sealed partial class MainWindow
         if (_updateDialog.Title.ToString() != UiText.Get("更新已取消")) throw new InvalidOperationException("Cancelled update UI missing.");
         _updateDialog.Hide(); await deliveryDialog;
         var notified = new UpdateStatus { State="available",CheckId=100,CompletedId=100,NotificationPending=true,Version="2.3.0",Title="v2.3.0",Notes="Automatic update reminder",Url=RepositoryUrl+"/releases/tag/v2.3.0" };
-        fake.AnnounceUpdate(notified); await Task.Delay(250);
+        fake.SetFullscreen(true); fake.AnnounceUpdate(notified); await Task.Delay(250);
+        if (_updateDialog is not null || !fake.Status.Update.NotificationPending) throw new InvalidOperationException("Fullscreen consumed or displayed the automatic update reminder.");
+        fake.SetFullscreen(false); await Task.Delay(250);
         if (_updateDialog is null || fake.Status.Update.NotificationPending) throw new InvalidOperationException("Automatic update reminder was not shown and acknowledged.");
         await CaptureAsync(FindVisual<FrameworkElement>(_updateDialog,item => item.Name == "BackgroundElement") ?? _updateDialog,Path.Combine(directory,"update-automatic.png"));
         var closingReminder = _updateDialog; closingReminder.Hide();

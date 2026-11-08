@@ -12,6 +12,7 @@ struct ProductServiceApi {
     std::uint64_t (*ticks)(void*) noexcept{};
     decltype(&WmfPlatformCapabilities) capabilities{WmfPlatformCapabilities};
     std::function<void()> openSettings,requestExit;
+    std::function<bool()> fullscreenDetected;
     std::function<void(DWORD,std::uint64_t)> settingsWindow;
     std::function<void(DWORD)> settingsReady;
     std::function<bool(DWORD)> isSettingsProcess;

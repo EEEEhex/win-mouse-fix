@@ -31,6 +31,8 @@ public:
     Result Prepare(const BindingConfig&,PreparedConfig&);
     Result PublishPrepared(PreparedConfig&&) noexcept;
     void Enable(bool) noexcept;
+    void SetFullscreenPaused(bool) noexcept;
+    bool FullscreenPaused() const noexcept { return fullscreenPaused_; }
     bool ApplySavedEnabled(bool,std::uint64_t expectedControlEpoch) noexcept;
     std::uint64_t ControlEpoch() const noexcept { return controlEpoch_; }
     std::uint64_t Generation() const noexcept { return generation_; }
@@ -58,6 +60,7 @@ private:
     void Capture() noexcept;
     void Complete(std::uint64_t,bool) noexcept;
     void SetEnabled(bool) noexcept;
+    bool Running() const noexcept { return !fullscreenPaused_ && (requested_ || recording_); }
     std::shared_ptr<const BindingConfig> Resolve(std::uint64_t);
     std::shared_ptr<const BindingConfig> Current();
     ProductRuntimeApi api_;
@@ -74,6 +77,7 @@ private:
     std::atomic<CaptureHandle> capture_{};
     std::atomic<bool> requested_{},workerReady_{},workerPaused_{true},captureReady_{},workerDone_{},captureDone_{},cancel_{},captureCancel_{};
     std::atomic<bool> recording_{},recordingDirty_{};
+    std::atomic<bool> fullscreenPaused_{};
     std::atomic<bool> abandonedCapture_{};
     std::atomic<std::uint64_t> generation_{1},readyGeneration_{},accepted_{},processed_{},activeRevision_{},lostTraces_{};
     std::atomic<std::uint64_t> controlEpoch_{1};

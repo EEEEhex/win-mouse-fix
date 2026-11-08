@@ -13,13 +13,14 @@
 #include "CapabilityEvidence.h"
 #include "UpdateService.h"
 #include "ProductVersion.h"
+#include "FullscreenMonitor.h"
 #include <fstream>
 #include <future>
 #include <vector>
 
 namespace wmf::host {
 namespace {
-constexpr UINT OpenSettingsMessage = WM_APP+20, ExitMessage = WM_APP+21, SwitchDataMessage = WM_APP+22;
+constexpr UINT OpenSettingsMessage = WM_APP+20, ExitMessage = WM_APP+21, SwitchDataMessage = WM_APP+22, FullscreenMessage = WM_APP+23;
 constexpr int SettingsId = 101,ExitId = 102,ToggleId = 103,StartupId = 104;
 constexpr wchar_t ClassName[] = L"WinMouseFix.Resident.v1";
 struct Options { bool settings{},startup{},smoke{},trace{}; std::filesystem::path output,updateTrial; std::wstring simulationTag; unsigned smokeHoldMs{}; DWORD restartAfter{},restartSettings{}; bool migrate{}; DataLocation migrationFrom{},migrationTo{}; };
@@ -27,6 +28,9 @@ struct Resident {
     HINSTANCE instance{}; HWND window{},settingsWindow{}; DWORD settingsPid{};
     ProductEnvironment environment; Options options;
     ProductSimulation simulation;
+    FullscreenMonitor fullscreenMonitor;
+    FullscreenPause fullscreen;
+    std::atomic<bool> fullscreenDetected{};
     unsigned adds{},deletes{},icons{},destroyedIcons{},settingsOpened{},step{},startupNotifications{};
     bool trayPresent{},firstPaused{},rebuildPreserved{};
     std::atomic<bool> closing{};
@@ -51,6 +55,7 @@ struct Resident {
     bool faultReported{};
     std::uint32_t reportedCleanup{};
     ~Resident() {
+        fullscreenMonitor.Stop();
         if (updaterProcess) CloseHandle(updaterProcess);
         if (runtime) runtime->Stop();
         if (service) service->Stop();
@@ -108,8 +113,18 @@ struct Resident {
     }
     std::wstring Tip() const {
         if (!runtime) return L"WinMouseFix — 正在准备";
+        if (runtime->Requested() && runtime->FullscreenPaused() && runtime->State()==ProductRuntimeState::Paused) return L"WinMouseFix — 全屏应用中，增强已自动暂停";
         constexpr const wchar_t* states[]{L"已暂停",L"正在启动",L"已启用",L"发生错误，已暂停",L"正在退出",L"已停止"};
         return L"WinMouseFix — "+std::wstring(states[static_cast<unsigned>(runtime->State())]);
+    }
+    void RefreshFullscreen() {
+        if (!runtime || !store || options.smoke) return;
+        const auto active=fullscreen.Update(true,ReadFullscreenWindow(),GetTickCount64());
+        fullscreenDetected=active;
+        const bool pause=store->Current()->config.disableInFullscreen && active;
+        const bool changed=runtime->FullscreenPaused()!=pause;
+        runtime->SetFullscreenPaused(pause);
+        if (changed && log) log->Record("fullscreen-pause",pause ? "entered" : "released");
     }
     void RefreshTray(bool recreate = false) {
         const auto tip = Tip(); if (!recreate && tip == lastTip) return;
@@ -141,6 +156,7 @@ struct Resident {
     }
     void Tick() {
         if (!runtime || !service) return;
+        RefreshFullscreen();
         service->Tick();
         if (!options.updateTrial.empty()) {
             const auto tx = options.updateTrial;
@@ -163,7 +179,7 @@ struct Resident {
         if (updates && !closing && options.updateTrial.empty()) {
             const auto configuration = store->Current();
             updates->Tick(GetTickCount64(),!configuration->recoveryRequired && configuration->config.automaticUpdates,configuration->config.updateIntervalHours);
-            if (updates->TakePrompt()) OpenSettings();
+            if (updates->TakePrompt(!fullscreenDetected)) OpenSettings();
             updates->RequestInstall(); // Download was explicitly approved as download-and-install.
             if (const auto tx = updates->TakeInstall(); !tx.empty()) BeginUpdate(tx);
         }
@@ -207,6 +223,7 @@ struct Resident {
                 if (notification == WM_CONTEXTMENU || notification == WM_RBUTTONUP) state->Menu(); return 0;
             }
             if (message == OpenSettingsMessage) { state->OpenSettings(); return 0; }
+            if (message == FullscreenMessage) { state->fullscreenMonitor.Acknowledge(); state->RefreshFullscreen(); state->RefreshTray(); return 0; }
             if (message == SwitchDataMessage) { state->RestartForData(static_cast<DataLocation>(a)); return 0; }
             if (message == ExitMessage || message == WM_CLOSE) { state->closing = true; if (state->service) state->service->BeginExit(false); else DestroyWindow(window); return 0; }
             if (message == WM_COMMAND) {
@@ -214,8 +231,8 @@ struct Resident {
             }
             if (message == WM_WTSSESSION_CHANGE && a == WTS_SESSION_LOCK) { state->Enable(false); return 0; }
             if (message == WM_TIMER) { state->Tick(); return 0; }
-            if ((message == WM_DPICHANGED || message == WM_SETTINGCHANGE) && state->tray) { state->lastTip.clear(); state->RefreshTray(); }
-            if (message == WM_DESTROY) { KillTimer(window,1); if (state->tray) state->tray->Remove(); if (state->controls) state->controls->Release(); PostQuitMessage(0); return 0; }
+            if ((message == WM_DPICHANGED || message == WM_SETTINGCHANGE || message == WM_DISPLAYCHANGE) && state->tray) { state->RefreshFullscreen(); state->lastTip.clear(); state->RefreshTray(); }
+            if (message == WM_DESTROY) { state->fullscreenMonitor.Stop(); KillTimer(window,1); if (state->tray) state->tray->Remove(); if (state->controls) state->controls->Release(); PostQuitMessage(0); return 0; }
         } catch (...) { if (state->runtime) state->runtime->ReportFailure({Status::NativeFailure,ERROR_UNHANDLED_EXCEPTION}); PostMessageW(window,WM_CLOSE,0,0); }
         return DefWindowProcW(window,message,a,b);
     }
@@ -289,6 +306,7 @@ int RunResident(HINSTANCE instance,const Options& options) {
     state.startup = std::make_unique<StartupRegistration>(environment,environment.executableDirectory/L"WinMouseFix.Host.exe",options.smoke ? state.simulation.Startup() : RealStartupApi());
     state.log = std::make_unique<ProductLog>(environment.dataDirectory/L"logs",*state.runtime,configuration->config.input.qpcFrequency,options.smoke);
     ProductServiceApi api; api.simulation = options.smoke; api.validatedFlags = validatedFlags; if (options.smoke) api.capabilities = state.simulation.RuntimeApi().engine.capabilities;
+    api.fullscreenDetected = [&] { return state.fullscreenDetected.load(); };
     state.updates = std::make_unique<UpdateService>(options.smoke,environment.dataDirectory/L"update-reminder.txt",options.smoke ? UpdateFetch{[](unsigned,std::stop_token) { return std::string("[]"); }} : UpdateFetch{},options.smoke ? std::filesystem::path{} : environment.executableDirectory);
     api.updateStatus = [&] { return state.updates->StatusJson(); }; api.checkUpdates = [&] { state.updates->Request(GetTickCount64()); };
     api.acknowledgeUpdate = [&](std::uint64_t id) { state.updates->Acknowledge(id); };
@@ -312,6 +330,10 @@ int RunResident(HINSTANCE instance,const Options& options) {
     api.recordShell = [&](const BindingConfig& config,std::string_view payload) { state.evidence->RecordShell(config,payload); };
     state.service = std::make_unique<ProductService>(environment,*state.store,*state.runtime,*state.startup,api);
     if (!state.service->Start()) throw std::runtime_error("Cannot start local settings control pipe");
+    if (!options.smoke) {
+        if (!state.fullscreenMonitor.Start(state.window,FullscreenMessage)) state.log->Record("fullscreen-monitor","Window event subscription incomplete; maintenance sampling remains active");
+        state.RefreshFullscreen();
+    }
     state.log->Record("startup",state.service->StatusJson(),configuration->config.input.revision);
     if (options.smoke) { std::filesystem::create_directories(options.output); std::ofstream(options.output/L"ready.json") << "{\"simulation\":true,\"ready\":true}"; }
     if (!SetTimer(state.window,1,options.smoke ? 50 : 200,nullptr)) throw std::runtime_error("Cannot start resident status timer");

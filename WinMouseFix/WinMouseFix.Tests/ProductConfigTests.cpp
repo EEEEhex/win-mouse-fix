@@ -20,12 +20,17 @@ std::string Replace(std::string text,std::string_view from,std::string_view to) 
 void Config() {
     auto config = DefaultProductConfig(false); VERIFY(!config.enabled && !config.startup && config.startupNotification && config.input.bindingCount == 4);
     const auto json = SerializeConfig(config); ProductConfig parsed;
+    VERIFY(!config.disableInFullscreen);
+    auto fullscreen=config; fullscreen.disableInFullscreen=true;
+    VERIFY(ParseConfig(SerializeConfig(fullscreen),parsed) && parsed.disableInFullscreen);
+    for (const auto value : {"null","1","\"false\""}) VERIFY(!ParseConfig(Replace(json,"\"disableInFullscreen\":false",std::string("\"disableInFullscreen\":")+value),parsed));
     auto error = ParseConfig(json,parsed);
     if (!error) std::cerr << "JSON parse: " << error.field << ' ' << error.message << ' ' << error.result.nativeError << '\n';
     VERIFY(error); VERIFY(SerializeConfig(parsed) == json);
-    auto legacy = ParseJsonObject(json); legacy.Remove(L"startupNotification"); legacy.Remove(L"automaticUpdates"); legacy.Remove(L"updateIntervalHours");
+    auto legacy = ParseJsonObject(json); legacy.Remove(L"startupNotification"); legacy.Remove(L"automaticUpdates"); legacy.Remove(L"updateIntervalHours"); legacy.Remove(L"disableInFullscreen");
     VERIFY(ParseConfig(winrt::to_string(legacy.Stringify()),parsed) && parsed.startupNotification);
     VERIFY(!parsed.automaticUpdates && parsed.updateIntervalHours == 6);
+    VERIFY(!parsed.disableInFullscreen);
     auto updateConfig = config; updateConfig.automaticUpdates = true; updateConfig.updateIntervalHours = 24;
     VERIFY(ParseConfig(SerializeConfig(updateConfig),parsed) && parsed.automaticUpdates && parsed.updateIntervalHours == 24);
     for (const auto value : {"0","169","1.5","\"6\""}) VERIFY(!ParseConfig(Replace(json,"\"updateIntervalHours\":6",std::string("\"updateIntervalHours\":")+value),parsed));
@@ -128,8 +133,8 @@ void NativeFiles() {
     auto files = std::make_unique<NativeConfigFiles>(directory); auto* disk = files.get(); ConfigStore store(std::move(files));
     VERIFY(store.Load()); auto c = store.Current()->config; VERIFY(store.Commit(1,c));
     const auto first = disk->Read(false); VERIFY(first.result && first.exists);
-    c.enabled = true; VERIFY(store.Commit(2,c)); VERIFY(disk->Read(true).bytes == first.bytes);
-    VERIFY(store.Load() && store.Current()->config.enabled);
+    c.enabled = true; c.disableInFullscreen = true; VERIFY(store.Commit(2,c)); VERIFY(disk->Read(true).bytes == first.bytes);
+    VERIFY(store.Load() && store.Current()->config.enabled && store.Current()->config.disableInFullscreen);
     { std::ofstream output(directory/L"config.json",std::ios::binary); output << "{\"schemaVersion\":98}"; }
     VERIFY(!store.Load()); VERIFY(disk->Read(false).bytes.find("98") != std::string::npos);
     VERIFY(store.Commit(store.Current()->config.input.revision,DefaultProductConfig(false),true));

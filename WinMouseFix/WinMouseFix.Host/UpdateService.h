@@ -35,7 +35,7 @@ public:
     void Tick(std::uint64_t now,bool automatic,unsigned intervalHours);
     void Request(std::uint64_t now);
     void Acknowledge(std::uint64_t checkId);
-    bool TakePrompt();
+    bool TakePrompt(bool allowed = true);
     std::string StatusJson() const;
     bool Download(std::uint64_t checkId);
     bool CancelDownload();

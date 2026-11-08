@@ -81,6 +81,13 @@ Result ProductRuntime::PublishPrepared(PreparedConfig&& prepared) noexcept {
 void ProductRuntime::Enable(bool enabled) noexcept {
     std::lock_guard lock(controlMutex_); ++controlEpoch_; SetEnabled(enabled);
 }
+void ProductRuntime::SetFullscreenPaused(bool paused) noexcept {
+    std::lock_guard lock(controlMutex_);
+    if (fullscreenPaused_.exchange(paused)==paused) return;
+    ++generation_; cancel_=true; captureCancel_=true;
+    if (paused) { recording_=false; recordingDirty_=true; }
+    SetEvent(workerWake_); SetEvent(captureWake_);
+}
 bool ProductRuntime::ApplySavedEnabled(bool enabled,std::uint64_t expected) noexcept {
     std::lock_guard lock(controlMutex_);
     if (controlEpoch_ != expected) return false;
@@ -95,7 +102,7 @@ void ProductRuntime::SetEnabled(bool enabled) noexcept {
 }
 void ProductRuntime::Record(bool enabled) noexcept {
     std::lock_guard lock(controlMutex_); ++controlEpoch_;
-    if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0 || !Failure()) return;
+    if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0 || !Failure() || (enabled && fullscreenPaused_)) return;
     recording_ = enabled; recordingDirty_ = true;
     cancel_ = true; captureCancel_ = true; ++generation_; SetEvent(workerWake_); SetEvent(captureWake_);
 }
@@ -126,13 +133,13 @@ ProductRuntimeState ProductRuntime::State() const noexcept {
     if (Finished()) return ProductRuntimeState::Stopped;
     if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0) return ProductRuntimeState::Stopping;
     if (!Failure()) return ProductRuntimeState::Faulted;
-    if (!requested_) return ProductRuntimeState::Paused;
+    if (!requested_ || fullscreenPaused_) return ProductRuntimeState::Paused;
     return workerReady_ && captureReady_ && readyGeneration_ == generation_ ? ProductRuntimeState::Enabled : ProductRuntimeState::Starting;
 }
 CaptureStats ProductRuntime::Stats() const noexcept { std::lock_guard lock(statsMutex_); return captureStats_; }
 bool ProductRuntime::Receive(void* p,const InputEvent* e) noexcept { return p && e && static_cast<ProductRuntime*>(p)->Receive(*e); }
 bool ProductRuntime::Receive(const InputEvent& event) noexcept {
-    if (!requested_ && !recording_ && event.kind != InputKind::Cancel) return true;
+    if (!Running() && event.kind != InputKind::Cancel) return true;
     if (!input_.Push(event)) { Fault({Status::Busy,ERROR_BUFFER_OVERFLOW}); return false; }
     accepted_ += event.samples; SetEvent(workerWake_); return true;
 }
@@ -163,7 +170,7 @@ void ProductRuntime::Worker() noexcept {
         std::uint64_t handledGeneration{};
         const HANDLE waits[]{stop_,workerWake_,deadlineTimer_};
         while (WaitForSingleObject(stop_,0) != WAIT_OBJECT_0) {
-            const auto generation = generation_.load(); const bool run = requested_ || recording_;
+            const auto generation = generation_.load(); const bool run = Running();
             if (cancel_.exchange(false) || !run || handledGeneration != generation) {
                 InputEvent discarded; while (input_.Pop(discarded)) processed_ += discarded.samples;
                 const auto result = engine.Cancel(CancelReason::Pause); if (!result) Fault(result);
@@ -179,7 +186,7 @@ void ProductRuntime::Worker() noexcept {
                 workerPaused_ = false; readyGeneration_ = handledGeneration;
                 if (!workerReady_.exchange(true)) SetEvent(captureWake_);
                 InputEvent event;
-                while ((requested_ || recording_) && !cancel_ && input_.Pop(event)) {
+                while (Running() && !cancel_ && input_.Pop(event)) {
                     if (event.generation != handledGeneration) { Complete(event.session,true); processed_ += event.samples; continue; }
                     auto result = Result{};
                     if ((event.kind == InputKind::Down || (event.kind == InputKind::Wheel && event.button == Button::None)) && event.revision != engine.Revision()) {
@@ -232,7 +239,7 @@ void ProductRuntime::Capture() noexcept {
         std::vector<std::shared_ptr<const BindingConfig>> retained;
         for (;;) {
             const bool stopping = WaitForSingleObject(stop_,0) == WAIT_OBJECT_0;
-            const bool run = !stopping && (requested_ || recording_) && Failure();
+            const bool run = !stopping && Running() && Failure();
             if (!handle && run && workerReady_ && readyGeneration_ == generation_) {
                 posted = Current(); retained.push_back(posted);
                 ProductCaptureConfig config; config.context = this; config.sink = &ProductRuntime::Receive; config.bindings = *posted; config.flags = flags_;
@@ -258,7 +265,7 @@ void ProductRuntime::Capture() noexcept {
                 if (recordingDirty_.exchange(false) || lastRecording != recording_) {
                     lastRecording = recording_; const auto result = api_.recording(handle,lastRecording ? 1 : 0); if (!result) Fault(result);
                 }
-                const bool enable = !stopping && (requested_ || recording_) && Failure() && workerReady_ && readyGeneration_ == generation_;
+                const bool enable = !stopping && Running() && Failure() && workerReady_ && readyGeneration_ == generation_;
                 if (enable != lastEnabled) {
                     const auto result = api_.post(handle,enable ? CaptureCommand::Enable : CaptureCommand::Disable,enable ? generation_.load() : 0);
                     if (!result) Fault(result); lastEnabled = enable;

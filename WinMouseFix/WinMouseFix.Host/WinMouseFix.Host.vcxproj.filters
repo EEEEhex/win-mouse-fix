@@ -9,6 +9,8 @@
     <ClInclude Include="framework.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="FullscreenMonitor.h"><Filter>头文件</Filter></ClInclude>
+    <ClCompile Include="FullscreenMonitor.cpp"><Filter>源文件</Filter></ClCompile>
     <ClInclude Include="Resource.h">
       <Filter>头文件</Filter>
     </ClInclude>

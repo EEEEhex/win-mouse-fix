@@ -12,7 +12,7 @@
   <Import Project="..\Shared\Update\UpdateSources.props" />
   <ItemDefinitionGroup>
     <ClCompile><PreprocessorDefinitions>WINMOUSEFIXPLATFORMWIN32_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <Link><SubSystem>Console</SubSystem><DelayLoadDLLs>WinMouseFix.Core.dll</DelayLoadDLLs><AdditionalDependencies>winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;advapi32.lib;version.lib;wtsapi32.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link>
+    <Link><SubSystem>Console</SubSystem><DelayLoadDLLs>WinMouseFix.Core.dll</DelayLoadDLLs><AdditionalDependencies>dwmapi.lib;winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;advapi32.lib;version.lib;wtsapi32.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link>
     <Manifest><AdditionalManifestFiles>$(ProjectDir)..\WinMouseFix.Host\app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -34,6 +34,8 @@
     <ClCompile Include="..\WinMouseFix.Host\ProductLog.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\ProductSimulation.cpp" />
     <ClCompile Include="ProductRuntimeTests.cpp" />
+    <ClCompile Include="FullscreenTests.cpp" />
+    <ClCompile Include="..\WinMouseFix.Host\FullscreenMonitor.cpp" />
     <ClCompile Include="ProductConfigTests.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\ProductConfig.cpp" />
     <ClCompile Include="..\WinMouseFix.Host\ConfigStore.cpp" />

@@ -10,6 +10,7 @@
     "revision": {"type":"integer","minimum":1,"maximum":9007199254740991},
     "enabled": {"type":"boolean"},
     "startup": {"type":"boolean"},
+    "disableInFullscreen": {"type":"boolean","default":false},
     "bindings": {"type":"array","maxItems":64,"items":{"$ref":"#/$defs/binding"}},
     "content": {
       "type":"object","additionalProperties":false,"required":["thresholdCounts","mmPerCountX","mmPerCountY"],

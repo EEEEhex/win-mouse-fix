@@ -236,7 +236,7 @@ void UpdateService::Acknowledge(std::uint64_t id) {
     pendingPrompt_ = false; lastNotified_ = release_.version.Text();
     try { if (!reminderFile_.empty()) { std::filesystem::create_directories(reminderFile_.parent_path()); std::ofstream out(reminderFile_,std::ios::trunc); out << lastNotified_; } } catch (...) {}
 }
-bool UpdateService::TakePrompt() { std::lock_guard lock(mutex_); if (!pendingPrompt_ || promptTaken_ || checking_) return false; promptTaken_ = true; return true; }
+bool UpdateService::TakePrompt(bool allowed) { std::lock_guard lock(mutex_); if (!allowed || !pendingPrompt_ || promptTaken_ || checking_) return false; promptTaken_ = true; return true; }
 std::string UpdateService::StatusJson() const {
     EnsureJsonApartment(); std::lock_guard lock(mutex_); JsonObject object;
     auto text = [&](const wchar_t* key,std::string_view value) { object.SetNamedValue(key,JsonValue::CreateStringValue(winrt::to_hstring(value))); };

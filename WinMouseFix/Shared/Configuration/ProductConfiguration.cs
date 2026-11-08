@@ -15,6 +15,7 @@ public sealed class ProductConfiguration
     [JsonRequired] public bool Enabled { get; set; }
     [JsonRequired] public bool Startup { get; set; }
     public bool StartupNotification { get; set; } = true;
+    public bool DisableInFullscreen { get; set; }
     public bool AutomaticUpdates { get; set; }
     public uint UpdateIntervalHours { get; set; } = 6;
     [JsonRequired] public List<ButtonBinding> Bindings { get; set; } =

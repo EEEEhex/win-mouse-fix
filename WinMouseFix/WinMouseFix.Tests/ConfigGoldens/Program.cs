@@ -20,6 +20,7 @@ foreach (var name in new[] { "default", "custom" })
     var json = File.ReadAllText(Path.Combine(shared, name+".json"));
     var c = ConfigurationJson.Parse(json);
     Check(c.StartupNotification);
+    Check(!c.DisableInFullscreen);
     var encoded = ConfigurationJson.Serialize(c);
     Check(ConfigurationJson.Serialize(ConfigurationJson.Parse(encoded)) == encoded);
     File.WriteAllText(Path.Combine(output, "csharp-"+name+".json"), encoded);
@@ -28,6 +29,14 @@ foreach (var name in new[] { "default", "custom" })
     Check(name == "default" ? !c.Enabled && c.Bindings.Count == 4 : c.Revision == 42 && c.Content.MmPerCountX == -0.25 && c.Bindings[0].Keys[1] == 84);
 }
 var notificationConfig = new ProductConfiguration { StartupNotification = false };
+var fullscreenConfig = new ProductConfiguration { DisableInFullscreen = true };
+Check(ConfigurationJson.Parse(ConfigurationJson.Serialize(fullscreenConfig)).DisableInFullscreen);
+foreach (var invalid in new[]{"null","1","\"false\""}) {
+    bool rejected=false;
+    try { ConfigurationJson.Parse(ConfigurationJson.Serialize(fullscreenConfig).Replace("\"disableInFullscreen\":true","\"disableInFullscreen\":"+invalid)); }
+    catch (JsonException) { rejected=true; }
+    Check(rejected);
+}
 Check(!ConfigurationJson.Parse(ConfigurationJson.Serialize(notificationConfig)).StartupNotification);
 bool invalidNotification = false;
 try { ConfigurationJson.Parse(ConfigurationJson.Serialize(notificationConfig).Replace("\"startupNotification\":false", "\"startupNotification\":\"false\"")); }

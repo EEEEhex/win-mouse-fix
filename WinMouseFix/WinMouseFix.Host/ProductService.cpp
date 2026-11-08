@@ -45,7 +45,7 @@ void ProductService::Disconnected(std::uint64_t connection) noexcept {
 }
 void ProductService::Tick() {
     std::lock_guard lock(leaseMutex_);
-    if (leaseOwner_ && (Now() >= leaseUntil_ || !runtime_.Failure())) { leaseOwner_ = leaseUntil_ = leaseGeneration_ = 0; runtime_.Record(false); }
+    if (leaseOwner_ && (Now() >= leaseUntil_ || !runtime_.Failure() || runtime_.FullscreenPaused())) { leaseOwner_ = leaseUntil_ = leaseGeneration_ = 0; runtime_.Record(false); }
     InputEvent event;
     while (runtime_.ReadRecorded(event)) if (leaseOwner_ && event.generation == leaseGeneration_ && (event.flags & RecordedInput)) { recorded_ = event; ++recordedSerial_; }
 }
@@ -78,6 +78,8 @@ std::string ProductService::StatusJson() {
     JsonObject os; Number(os,L"major",capabilities_.osMajor); Number(os,L"minor",capabilities_.osMinor); Number(os,L"build",capabilities_.osBuild); Number(os,L"revision",capabilities_.osRevision); Boolean(os,L"revisionKnown",capabilities_.revisionKnown != 0); status.SetNamedValue(L"os",os);
     constexpr const char* states[]{"paused","starting","enabled","faulted","stopping","stopped"};
     Text(status,L"state",states[static_cast<unsigned>(runtime_.State())]); Boolean(status,L"requested",runtime_.Requested());
+    Boolean(status,L"fullscreenPaused",runtime_.FullscreenPaused());
+    Boolean(status,L"fullscreenDetected",api_.fullscreenDetected ? api_.fullscreenDetected() : runtime_.FullscreenPaused());
     const auto committed = store_.Current(); Number(status,L"configRevision",committed->config.input.revision); Number(status,L"activeRevision",runtime_.ActiveRevision());
     Boolean(status,L"recoveryRequired",committed->recoveryRequired); Text(status,L"recoveryReason",committed->warning.message);
     Number(status,L"lostTraceRecords",runtime_.LostTraces()); Boolean(status,L"exitRequested",exiting_);
@@ -207,6 +209,7 @@ ProtocolReply ProductService::DispatchInner(const ProtocolRequest& request) {
             std::lock_guard lock(leaseMutex_);
             if (leaseOwner_ && leaseOwner_ != request.connection) return Rejected("busy","Another connection owns button identification");
             if (!runtime_.Failure()) return Rejected("runtime-fault","Restart the Host before recording after a native failure");
+            if (runtime_.FullscreenPaused()) return Rejected("fullscreen-paused","Exit fullscreen before identifying a button");
             leaseOwner_ = request.connection; leaseUntil_ = Now()+30000; recordedSerial_ = 0; recorded_ = {}; runtime_.Record(true); leaseGeneration_ = runtime_.Generation();
         }
         auto reply = StatusResponse(); auto lease = ParseJsonObject(reply.payload); Number(lease,L"leaseMilliseconds",30000); reply.payload = winrt::to_string(lease.Stringify()); return reply;

@@ -85,11 +85,12 @@ ConfigError ParseConfig(std::string_view json,ProductConfig& output) noexcept {
         const auto root = ParseJsonObject(json);
         field = "schemaVersion"; const auto schema = Integer(root.GetNamedNumber(L"schemaVersion"));
         if (schema != ConfigSchemaVersion) return {ConfigProblem::NewerSchema,field,"Unsupported configuration schema",0,0,{Status::VersionMismatch}};
-        Keys(root,{L"schemaVersion",L"revision",L"enabled",L"startup",L"bindings",L"content",L"shell",L"wheel",L"zoom",L"timing"},{L"startupNotification",L"automaticUpdates",L"updateIntervalHours"});
+        Keys(root,{L"schemaVersion",L"revision",L"enabled",L"startup",L"bindings",L"content",L"shell",L"wheel",L"zoom",L"timing"},{L"startupNotification",L"automaticUpdates",L"updateIntervalHours",L"disableInFullscreen"});
         auto config = DefaultProductConfig(false); auto& c = config.input;
         field = "revision"; c.revision = Integer(root.GetNamedNumber(L"revision"),9007199254740991ull);
         field = "enabled"; config.enabled = root.GetNamedBoolean(L"enabled"); field = "startup"; config.startup = root.GetNamedBoolean(L"startup");
         field = "startupNotification"; config.startupNotification = root.HasKey(L"startupNotification") ? root.GetNamedBoolean(L"startupNotification") : true;
+        field = "disableInFullscreen"; config.disableInFullscreen = root.HasKey(L"disableInFullscreen") ? root.GetNamedBoolean(L"disableInFullscreen") : false;
         field = "automaticUpdates"; config.automaticUpdates = root.HasKey(L"automaticUpdates") ? root.GetNamedBoolean(L"automaticUpdates") : false;
         field = "updateIntervalHours"; config.updateIntervalHours = root.HasKey(L"updateIntervalHours") ? static_cast<std::uint32_t>(Integer(root.GetNamedNumber(L"updateIntervalHours"),168)) : 6;
         field = "content"; const auto content = root.GetNamedObject(L"content"); Keys(content,{L"thresholdCounts",L"mmPerCountX",L"mmPerCountY"});
@@ -130,6 +131,7 @@ std::string SerializeConfig(const ProductConfig& config) {
     Number(root,L"schemaVersion",ConfigSchemaVersion); Number(root,L"revision",static_cast<double>(c.revision));
     root.SetNamedValue(L"enabled",JsonValue::CreateBooleanValue(config.enabled)); root.SetNamedValue(L"startup",JsonValue::CreateBooleanValue(config.startup));
     root.SetNamedValue(L"startupNotification",JsonValue::CreateBooleanValue(config.startupNotification));
+    root.SetNamedValue(L"disableInFullscreen",JsonValue::CreateBooleanValue(config.disableInFullscreen));
     root.SetNamedValue(L"automaticUpdates",JsonValue::CreateBooleanValue(config.automaticUpdates)); Number(root,L"updateIntervalHours",config.updateIntervalHours);
     JsonObject content; Number(content,L"thresholdCounts",c.thresholdCounts); Number(content,L"mmPerCountX",c.mmPerCountX); Number(content,L"mmPerCountY",c.mmPerCountY); root.SetNamedValue(L"content",content);
     JsonObject shell; Number(shell,L"fingers",c.shellFingers); Number(shell,L"mmPerCountX",c.shellMmPerCountX); Number(shell,L"mmPerCountY",c.shellMmPerCountY); Number(shell,L"directionRatio",c.directionRatio); root.SetNamedValue(L"shell",shell);

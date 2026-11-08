@@ -6,6 +6,8 @@
     <Filter Include="资源文件" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="FullscreenTests.cpp"><Filter>源文件</Filter></ClCompile>
+    <ClCompile Include="..\WinMouseFix.Host\FullscreenMonitor.cpp"><Filter>源文件</Filter></ClCompile>
     <ClCompile Include="Tests.cpp">
       <Filter>源文件</Filter>
     </ClCompile>

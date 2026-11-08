@@ -391,6 +391,54 @@ void OptionalCapabilities() {
         f.release=true; VERIFY(Wait([&] { return f.completed>=1; })); runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }) && runtime.Failure());
     }
 }
+void FullscreenRuntime() {
+    for (unsigned mode=0;mode<4;++mode) {
+        auto config=DefaultProductConfig(false).input; Fixture f; f.hold=true;
+        if (mode==1) f.shell=true;
+        if (mode==2) { f.noMotion=f.zoom=true; config.bindings[config.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom}; }
+        if (mode==3) f.noMotion=true;
+        ProductRuntime runtime(config,true,f.Api(),NativeZoomValidated);
+        VERIFY(Wait([&] { return runtime.State()==ProductRuntimeState::Enabled && f.held && (mode==3 || f.submitted>=2); }));
+        const auto epoch=runtime.ControlEpoch(),generation=runtime.Generation();
+        runtime.SetFullscreenPaused(true);
+        VERIFY(runtime.Requested() && runtime.FullscreenPaused() && runtime.State()==ProductRuntimeState::Paused);
+        VERIFY(runtime.ControlEpoch()==epoch && runtime.Generation()>generation);
+        VERIFY(Wait([&] { return f.canceled>=1; }));
+        f.release=true; VERIFY(Wait([&] { return f.destroyed>=1; }));
+        if (mode!=3) VERIFY(!f.frames.empty() && f.frames.back().phase==Phase::Cancel);
+        VERIFY(f.requests.empty());
+        const auto frames=f.submitted.load(),created=f.created.load();
+        runtime.Record(true); Sleep(30); VERIFY(f.created==created && f.submitted==frames);
+        runtime.SetFullscreenPaused(false); VERIFY(Wait([&] { return runtime.State()==ProductRuntimeState::Enabled && f.created>created; }));
+        VERIFY(runtime.Requested() && !runtime.FullscreenPaused() && f.submitted==frames && f.requests.empty());
+        runtime.SetFullscreenPaused(true); runtime.Enable(false); runtime.SetFullscreenPaused(false);
+        VERIFY(Wait([&] { return f.destroyed>=2; })); VERIFY(!runtime.Requested() && runtime.State()==ProductRuntimeState::Paused);
+        runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }) && runtime.Failure());
+        const auto finishedCreated=f.created.load(); runtime.SetFullscreenPaused(true); runtime.SetFullscreenPaused(false); Sleep(10); VERIFY(f.created==finishedCreated);
+    }
+}
+void FullscreenService() {
+    auto config=DefaultProductConfig(false); config.disableInFullscreen=true;
+    auto disk=std::make_unique<ServiceFiles>(); disk->active=SerializeConfig(config); ConfigStore store(std::move(disk)); VERIFY(store.Load());
+    const auto environment=IsolatedEnvironment(); Fixture f; f.hold=true; ProductRuntime runtime(environment,config.input,false,f.Api());
+    runtime.SetFullscreenPaused(true);
+    Registry registry; StartupRegistration startup(environment,L"D:/With Spaces/WinMouseFix.Host.exe",registry.Api());
+    ProductServiceApi api; api.simulation=true; api.capabilities=f.Api().engine.capabilities; api.fullscreenDetected=[] { return true; };
+    ProductService service(environment,store,runtime,startup,api);
+    auto reply=ParseJsonObject(service.Handle(ServiceRequest(service,"fullscreen-enable","set-enabled",R"({"enabled":true})"),1,GetCurrentProcessId()));
+    VERIFY(reply.GetNamedBoolean(L"ok") && runtime.Requested() && runtime.FullscreenPaused() && !f.created);
+    VERIFY(store.Current()->config.enabled && store.Current()->config.disableInFullscreen);
+    auto status=ParseJsonObject(service.StatusJson()); VERIFY(status.GetNamedBoolean(L"fullscreenPaused") && status.GetNamedBoolean(L"fullscreenDetected"));
+    VERIFY(status.GetNamedBoolean(L"requested") && status.GetNamedString(L"state")==L"paused");
+    reply=ParseJsonObject(service.Handle(ServiceRequest(service,"fullscreen-record","record-start"),1,GetCurrentProcessId()));
+    VERIFY(!reply.GetNamedBoolean(L"ok") && reply.GetNamedString(L"code")==L"fullscreen-paused" && !service.Recording());
+    auto changed=store.Current()->config; changed.input.mmPerCountX=0.3;
+    reply=ParseJsonObject(service.Handle(ServiceRequest(service,"fullscreen-save","update-config","{\"config\":"+SerializeConfig(changed)+"}",changed.input.revision),1,GetCurrentProcessId()));
+    VERIFY(reply.GetNamedBoolean(L"ok") && runtime.FullscreenPaused() && runtime.Requested() && !f.created);
+    service.SetEnabled(false).get(); runtime.SetFullscreenPaused(false); Sleep(20); VERIFY(!runtime.Requested() && !f.created);
+    runtime.ReportFailure({Status::NativeFailure,321}); runtime.SetFullscreenPaused(true); runtime.SetFullscreenPaused(false); VERIFY(!runtime.Failure() && !f.created);
+    runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
+}
 void ExpiredZoomDoesNotBlockEnable() {
     auto config=DefaultProductConfig(false); config.input.bindings[config.input.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
     auto disk=std::make_unique<ServiceFiles>(); disk->active=SerializeConfig(config); ConfigStore store(std::move(disk)); VERIFY(store.Load());
@@ -412,4 +460,4 @@ void ExpiredZoomDoesNotBlockEnable() {
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 }
-int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); total += checks; return failures; }
+int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); FullscreenRuntime(); FullscreenService(); total += checks; return failures; }

@@ -19,7 +19,7 @@ DataPaths Paths(std::wstring_view name) {
 }
 void RoundTrip() {
     const auto paths = Paths(L"往返 中文 路径"); VERIFY(ReadDataLocation(paths) == DataLocation::AppData);
-    auto config = DefaultProductConfig(false); config.enabled = true; config.automaticUpdates = true; config.updateIntervalHours = 12;
+    auto config = DefaultProductConfig(false); config.enabled = true; config.automaticUpdates = true; config.updateIntervalHours = 12; config.disableInFullscreen = true;
     const auto bytes = SerializeConfig(config);
     Write(paths.appData/L"config.json",bytes); Write(paths.appData/L"config.backup.json",bytes);
     Write(paths.appData/L"Settings/ui.json",R"({"Language":"en","Width":900})");

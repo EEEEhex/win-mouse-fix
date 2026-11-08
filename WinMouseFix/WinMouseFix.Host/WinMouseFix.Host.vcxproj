@@ -105,6 +105,7 @@
     <ClCompile Include="ContentEngine.cpp" />
     <ClCompile Include="ProductEngine.cpp" />
     <ClCompile Include="ProductRuntime.cpp" />
+    <ClCompile Include="FullscreenMonitor.cpp" />
     <ClCompile Include="ProductConfig.cpp" />
     <ClCompile Include="ConfigStore.cpp" />
     <ClCompile Include="ConfigCoordinator.cpp" />
@@ -126,7 +127,7 @@
     <ClCompile Include="ContentRuntime.cpp" />
     <ClCompile Include="ContentMode.cpp" />
   </ItemGroup>
-  <ItemDefinitionGroup><Link><DelayLoadDLLs>WinMouseFix.Core.dll;WinMouseFix.Platform.Win32.dll;%(DelayLoadDLLs)</DelayLoadDLLs><AdditionalDependencies>winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;wtsapi32.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup><Link><DelayLoadDLLs>WinMouseFix.Core.dll;WinMouseFix.Platform.Win32.dll;%(DelayLoadDLLs)</DelayLoadDLLs><AdditionalDependencies>dwmapi.lib;winhttp.lib;comctl32.lib;shell32.lib;ole32.lib;windowsapp.lib;delayimp.lib;wtsapi32.lib;advapi32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalOptions>/DELAY:UNLOAD %(AdditionalOptions)</AdditionalOptions></Link></ItemDefinitionGroup>
   <ItemDefinitionGroup><Manifest><AdditionalManifestFiles>$(ProjectDir)app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest></ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="NativeModules.h" />
@@ -139,6 +140,7 @@
     <ClInclude Include="ContentEngine.h" />
     <ClInclude Include="ProductEngine.h" />
     <ClInclude Include="ProductRuntime.h" />
+    <ClInclude Include="FullscreenMonitor.h" />
     <ClInclude Include="ProductConfig.h" />
     <ClInclude Include="ConfigStore.h" />
     <ClInclude Include="ConfigCoordinator.h" />

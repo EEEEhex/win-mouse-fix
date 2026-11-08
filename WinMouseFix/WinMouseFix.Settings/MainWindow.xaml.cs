@@ -31,7 +31,7 @@ public sealed partial class MainWindow : Window
     private bool _hostLost;
     private ToggleSwitch? _automaticUpdates;
     private Control? _checkUpdatesButton;
-    private ToggleSwitch? _startup, _startupNotice;
+    private ToggleSwitch? _startup, _startupNotice, _disableInFullscreen;
     private ComboBox? _dataLocation;
     private TextBlock? _dataLocationNote;
     private Expander? _moreSettings, _advancedSettings;
@@ -104,7 +104,7 @@ public sealed partial class MainWindow : Window
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args) { if (Model is null || args.SelectedItem is not NavigationViewItem item) return; _page = (string)item.Tag; BuildPage(); }
     public void Navigate(string tag) { Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == tag); }
     private void BuildPage() {
-        _refresh.Clear(); _hostControls.Clear(); PageContent.Children.Clear(); _bindings = null; _bindingActions.Clear(); _bindingControls.Clear(); _bindingStructure = ""; _enabled = null; _automaticUpdates = null; _startup = null; _startupNotice = null; _dataLocation = null; _dataLocationNote = null; _moreSettings = null; _advancedSettings = null; _runtime = null; _capability = null;
+        _refresh.Clear(); _hostControls.Clear(); PageContent.Children.Clear(); _bindings = null; _bindingActions.Clear(); _bindingControls.Clear(); _bindingStructure = ""; _enabled = null; _automaticUpdates = null; _startup = null; _startupNotice = null; _disableInFullscreen = null; _dataLocation = null; _dataLocationNote = null; _moreSettings = null; _advancedSettings = null; _runtime = null; _capability = null;
         switch (_page) { case "general": General(); break; case "buttons": Buttons(); break; case "scrolling": Scrolling(); break; default: About(); break; }
         RefreshControls(); RefreshState();
         PageScroll.ChangeView(null,0,null,true);
@@ -133,6 +133,10 @@ public sealed partial class MainWindow : Window
         var startupNotice = _startupNotice = RequiresHost(new ToggleSwitch { OnContent = "", OffContent = "" });
         startupNotice.Toggled += async (_,_) => { if (!_updating) { Model.Edit(c => c.StartupNotification = startupNotice.IsOn); await Model.FlushAsync(); } }; _refresh.Add(c => startupNotice.IsOn = c.StartupNotification);
         PageContent.Children.Add(Stack(SettingRow(UiText.Get("登录 Windows 时启动"),startup),SettingRow(UiText.Get("启动提示"),startupNotice),Secondary(UiText.Get("程序启动时显示后台运行通知，下次启动生效。"))));
+        var fullscreen = _disableInFullscreen = RequiresHost(new ToggleSwitch { OnContent = "", OffContent = "" });
+        fullscreen.Toggled += async (_,_) => { if (!_updating) { Model.Edit(c => c.DisableInFullscreen = fullscreen.IsOn); await Model.FlushAsync(); } };
+        _refresh.Add(c => fullscreen.IsOn = c.DisableInFullscreen);
+        PageContent.Children.Add(Stack(SettingRow(UiText.Get("全屏时禁用"),fullscreen),Secondary(UiText.Get("当前应用全屏时暂停鼠标增强，退出全屏后自动恢复。"))));
         PageContent.Children.Add(Separator());
         _automaticUpdates = RequiresHost(new ToggleSwitch { OnContent = "", OffContent = "" });
         AutomationProperties.SetName(_automaticUpdates,UiText.Get("自动更新"));
@@ -332,6 +336,7 @@ public sealed partial class MainWindow : Window
         else if (Model.Status.Storage.NativeError != 0) { ConnectionBar.Message = UiText.Get("无法开始迁移，请检查目录权限后重试。"); ConnectionBar.Severity = InfoBarSeverity.Warning; ConnectionBar.IsOpen = true; }
         if (_enabled is not null) { _enabled.IsOn = Model.Status.Requested; _enabled.IsEnabled = Model.Connected && !_closing && !Model.Status.Storage.Switching && !UpdateBusy; }
         if (_runtime is not null) _runtime.Text = Model.Status.State switch { "enabled" => UiText.Get("后台已启用"), "starting" => UiText.Get("正在启动输入引擎…"), "faulted" => UiText.Format("后台发生错误，已停止接管。错误 {0}，清理 {1}",Model.Status.Failure.NativeError,Model.Status.Failure.CleanupError), "stopping" => UiText.Get("正在退出，请松开仍按住的侧键。"), _ => UiText.Get("后台已暂停，普通输入保持原样。") };
+        if (_runtime is not null && Model.Status.Requested && Model.Status.FullscreenPaused && Model.Status.State == "paused") _runtime.Text = UiText.Get("检测到全屏应用，鼠标增强已自动暂停。");
         if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") && !ZoomAvailable())
             _runtime.Text += "\n"+UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。");
         if (_capability is not null) _capability.Text = Model.Status.Capabilities.FirstOrDefault(c => c.Name == "wheel")?.State switch { "supported" => UiText.Get("滚轮增强可用。"), "unavailable" => UiText.Get("当前系统不支持滚轮增强。"), _ => UiText.Get("滚轮增强暂不可用，普通滚轮保持原有行为。") };
@@ -449,6 +454,9 @@ public sealed partial class MainWindow : Window
                 var noticeBefore = Model.Committed.StartupNotification; _startupNotice!.IsOn = !noticeBefore; await Task.Delay(150); await Model.ReloadAsync();
                 if (Model.Committed.StartupNotification != !noticeBefore || _startupNotice.IsOn != !noticeBefore) throw new InvalidOperationException("Startup notification preference did not persist through Host ACK/reload.");
                 _startupNotice.IsOn = noticeBefore; await Task.Delay(150);
+                var fullscreenBefore=Model.Committed.DisableInFullscreen; _disableInFullscreen!.IsOn=!fullscreenBefore; await Task.Delay(150); await Model.ReloadAsync();
+                if (Model.Committed.DisableInFullscreen!=!fullscreenBefore || _disableInFullscreen.IsOn!=!fullscreenBefore) throw new InvalidOperationException("Fullscreen preference did not persist through Host ACK/reload.");
+                _disableInFullscreen.IsOn=fullscreenBefore; await Task.Delay(150);
                 _dataLocation!.SelectedIndex = 1; await Task.Delay(150);
                 if (Model.Status.Storage.Location != "program") throw new InvalidOperationException("Program data location did not reach the Host.");
                 ((FakeHostSession)_session).RejectNext = true; _dataLocation.SelectedIndex = 0; await Task.Delay(150);
@@ -471,6 +479,7 @@ public sealed partial class MainWindow : Window
             if (page == "scrolling") { PageScroll.ChangeView(null,PageScroll.ScrollableHeight,null,true); await Task.Delay(150); await CaptureAsync(Root,Path.Combine(directory,"scrolling-end.png")); await CaptureAdvancedAsync(directory,"advanced.png"); _advancedSettings!.IsExpanded = false; PageScroll.ChangeView(null,0,null,true); }
             if (page == "general") { _moreSettings!.IsExpanded = true; await Task.Delay(350); PageScroll.ChangeView(null,PageScroll.ScrollableHeight,null,true); await Task.Delay(150); await CaptureAsync(Root,Path.Combine(directory,"general-more.png")); _moreSettings.IsExpanded = false; PageScroll.ChangeView(null,0,null,true); await Task.Delay(200); }
         }
+        await RunFullscreenSmokeAsync(directory);
         await RunUpdateSmokeAsync(directory);
         var zoomId = Model.Committed.Bindings.Max(b => b.Id)+1;
         var wasEnabled = Model.Committed.Enabled;
@@ -525,6 +534,18 @@ public sealed partial class MainWindow : Window
     }
     private void CheckTitleBarUnchanged() {
         if (!ExtendsContentIntoTitleBar || TitleBar.Visibility != Visibility.Visible || Root.RowDefinitions[0].Height.Value != 48) throw new InvalidOperationException("Settings title bar mode changed during the dialog.");
+    }
+    private async Task RunFullscreenSmokeAsync(string directory) {
+        var fake=(FakeHostSession)_session; var previousEnabled=Model.Committed.Enabled; var previousPreference=Model.Committed.DisableInFullscreen;
+        Navigate("general"); Model.Edit(c => c.DisableInFullscreen=true); await Model.FlushAsync(); await Model.SetEnabledAsync(true);
+        fake.SetFullscreen(true); await Task.Delay(150);
+        if (_enabled is null || !_enabled.IsOn || !_enabled.IsEnabled || _runtime is null || !_runtime.Text.Contains(UiText.Get("检测到全屏应用，鼠标增强已自动暂停。"))) throw new InvalidOperationException("Fullscreen suspension changed enable intent or hid its reason.");
+        await CaptureAsync(Root,Path.Combine(directory,"general-fullscreen-paused.png"));
+        await Model.SetEnabledAsync(false); fake.SetFullscreen(false); await Task.Delay(100);
+        if (Model.Status.Requested || _enabled.IsOn) throw new InvalidOperationException("Leaving fullscreen undid a manual pause.");
+        fake.SetFullscreen(true); await Model.SetEnabledAsync(true); Model.Edit(c => c.DisableInFullscreen=false); await Model.FlushAsync(); await Task.Delay(100);
+        if (Model.Status.FullscreenPaused || Model.Status.State!="enabled") throw new InvalidOperationException("Disabling fullscreen suspension did not resume enabled input.");
+        fake.SetFullscreen(false); Model.Edit(c => c.DisableInFullscreen=previousPreference); await Model.FlushAsync(); await Model.SetEnabledAsync(previousEnabled);
     }
     private async Task RunBindingEditorSmokeAsync(string directory) {
         if (!_endpoint.Simulation || _session is not FakeHostSession fake) throw new InvalidOperationException("Binding UI smoke requires the fake session.");

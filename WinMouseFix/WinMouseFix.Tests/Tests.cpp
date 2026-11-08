@@ -309,6 +309,7 @@ int main(int argc,char** argv) {
     extern int RunUpdatePackageTests(int&);
     extern int RunDataLocationTests(int&);
     extern int RunProductRuntimeTests(int&);
+    extern int RunFullscreenTests(int&);
     extern int RunProductConfigTests(int&);
     extern int RunControlPipeTests(int&);
     if (argc == 2 && std::string_view(argv[1]) == "--config-goldens") {
@@ -334,6 +335,7 @@ int main(int argc,char** argv) {
     failures += RunUpdatePackageTests(checks);
     failures += RunDataLocationTests(checks);
     failures += RunProductRuntimeTests(checks);
+    failures += RunFullscreenTests(checks);
     failures += RunProductConfigTests(checks);
     failures += RunControlPipeTests(checks);
     std::cout << checks << " checks, " << failures << " failures; no desktop injection performed.\n";

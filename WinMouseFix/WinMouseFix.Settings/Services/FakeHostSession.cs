@@ -26,7 +26,7 @@ public sealed class FakeHostSession : IHostSession
         if (location is not ("appdata" or "program")) return Task.FromResult(Reply(false,"bad-request"));
         Status.Storage.Location = location; Status.Storage.NativeError = 0; return Task.FromResult(Reply());
     }
-    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.0" };
+    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.1" };
     public Task<HostReply> ReadyAsync(CancellationToken cancellation = default) => Task.FromResult(Reply());
     public Task<HostReply> CheckUpdatesAsync(CancellationToken cancellation = default) {
         var id = Status.Update.CheckId+1;
@@ -49,7 +49,13 @@ public sealed class FakeHostSession : IHostSession
     public event Action<HostStatus>? StatusChanged;
     public event Action<string>? Disconnected;
     public event Action? Restarted;
-    private void Emit() { Status.Version++; Status.ConfigRevision = _config.Revision; StatusChanged?.Invoke(JsonSerializer.Deserialize<HostStatus>(JsonSerializer.Serialize(Status, ConfigurationJson.Options), ConfigurationJson.Options)!); }
+    private void Emit() {
+        Status.FullscreenPaused = _config.DisableInFullscreen && Status.FullscreenDetected;
+        if (Status.FullscreenPaused) { Status.Recording = false; Status.RecordingRemainingMilliseconds = 0; }
+        if (Status.State is not ("faulted" or "stopping" or "stopped")) Status.State = Status.Requested && !Status.FullscreenPaused ? "enabled" : "paused";
+        Status.Version++; Status.ConfigRevision = _config.Revision; StatusChanged?.Invoke(JsonSerializer.Deserialize<HostStatus>(JsonSerializer.Serialize(Status, ConfigurationJson.Options), ConfigurationJson.Options)!);
+    }
+    public void SetFullscreen(bool detected) { Status.FullscreenDetected = detected; Emit(); }
     private HostReply Reply(bool ok = true, string code = "ok", string field = "", string message = "") {
         if (Offline) throw new System.IO.IOException("模拟连接已断开。");
         Emit(); return new() { ProtocolVersion = 1, RequestId = "simulation", HostRunId = "ui-simulation", Ok = ok, Code = code,
@@ -64,7 +70,7 @@ public sealed class FakeHostSession : IHostSession
         if (RejectNext) { RejectNext = false; return Task.FromResult(Reply(false,"configuration-rejected","content.thresholdCounts","模拟拒绝，不改变后台配置。")); }
         var issue = ConfigurationJson.Validate(config);
         if (issue is not null) return Task.FromResult(Reply(false,"configuration-rejected",issue.Field,issue.Message));
-        _config = config.Clone(); _config.Revision = expected+1; Updates++; return Task.FromResult(Reply());
+        _config = config.Clone(); _config.Revision = expected+1; Status.Requested = _config.Enabled; Updates++; return Task.FromResult(Reply());
     }
     public Task<HostReply> ImportAsync(ProductConfiguration config, ulong expected, CancellationToken cancellation = default) => UpdateAsync(config,expected,cancellation);
     public Task<HostReply> ResetAsync(ulong expected, CancellationToken cancellation = default) => UpdateAsync(new(),expected,cancellation);
