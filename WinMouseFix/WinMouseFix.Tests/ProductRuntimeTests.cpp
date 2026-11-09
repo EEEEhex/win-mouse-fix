@@ -376,7 +376,16 @@ void ZoomOnlyService() {
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 void OptionalCapabilities() {
-    for (const std::uint32_t flags : {0u,static_cast<unsigned>(WheelSourceValidated),static_cast<unsigned>(NativeZoomValidated),static_cast<unsigned>(WheelSourceValidated|NativeZoomValidated),static_cast<unsigned>(ExplicitValidationProbe)}) {
+    Capabilities caps;
+    caps.apiBits = RequiredApis | ActionApi;
+    const auto releasedWheel = ReleasedCaptureFlags(caps, 0);
+    const auto releasedWithZoom = ReleasedCaptureFlags(caps, NativeZoomValidated);
+    VERIFY(releasedWheel == WheelSourceValidated);
+    VERIFY(releasedWithZoom == (WheelSourceValidated | NativeZoomValidated));
+    caps.apiBits = RequiredApis;
+    VERIFY(ReleasedCaptureFlags(caps, WheelSourceValidated | NativeZoomValidated) == 0);
+    VERIFY(DefaultBindingConfig().wheelMode == WheelMode::Off);
+    for (const std::uint32_t flags : {0u,releasedWheel,static_cast<unsigned>(NativeZoomValidated),releasedWithZoom,static_cast<unsigned>(ExplicitValidationProbe)}) {
         auto config=DefaultBindingConfig(); config.wheelMode=WheelMode::High;
         config.bindings[config.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
         Fixture f; f.hold=f.noMotion=true; ProductRuntime runtime(config,true,f.Api(),flags);
@@ -390,6 +399,28 @@ void OptionalCapabilities() {
         VERIFY(f.config.bindings.bindingCount==(zoom?5u:4u) && f.config.bindings.wheelMode==(wheel?WheelMode::High:WheelMode::Off));
         f.release=true; VERIFY(Wait([&] { return f.completed>=1; })); runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }) && runtime.Failure());
     }
+}
+void RecoveryDoesNotBlockUpdateDownload() {
+    auto disk=std::make_unique<ServiceFiles>(); auto* files=disk.get();
+    auto future=ParseJsonObject(SerializeConfig(DefaultProductConfig(false)));
+    future.SetNamedValue(L"futureOption",winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(true));
+    const auto original=winrt::to_string(future.Stringify()); files->active=files->backup=original;
+    ConfigStore store(std::move(disk)); VERIFY(!store.Load() && store.Current()->recoveryRequired);
+    const auto environment=IsolatedEnvironment(); Fixture f; ProductRuntime runtime(environment,store.Current()->config.input,false,f.Api());
+    Registry registry; StartupRegistration startup(environment,L"D:/With Spaces/WinMouseFix.Host.exe",registry.Api());
+    unsigned downloads{}; ProductServiceApi api; api.simulation=true; api.capabilities=f.Api().engine.capabilities;
+    api.downloadUpdate=[&](std::uint64_t id) { ++downloads; return id==7; };
+    ProductService service(environment,store,runtime,startup,api);
+    auto reply=ParseJsonObject(service.Handle(ServiceRequest(service,"recovery-download","download-update",R"({"checkId":7})"),1,GetCurrentProcessId()));
+    VERIFY(reply.GetNamedBoolean(L"ok") && downloads==1);
+    VERIFY(reply.GetNamedObject(L"payload").GetNamedObject(L"status").GetNamedBoolean(L"recoveryRequired"));
+    VERIFY(store.Current()->recoveryRequired && files->active==original && files->backup==original && files->preserved.empty());
+    VERIFY(!runtime.Requested() && !f.created);
+    reply=ParseJsonObject(service.Handle(ServiceRequest(service,"stale-download","download-update",R"({"checkId":8})"),1,GetCurrentProcessId()));
+    VERIFY(!reply.GetNamedBoolean(L"ok") && reply.GetNamedString(L"code")==L"update-not-ready" && downloads==2);
+    reply=ParseJsonObject(service.Handle(ServiceRequest(service,"recovery-enable","set-enabled",R"({"enabled":true})"),1,GetCurrentProcessId()));
+    VERIFY(!reply.GetNamedBoolean(L"ok") && !runtime.Requested() && !f.created && files->active==original);
+    runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 void FullscreenRuntime() {
     for (unsigned mode=0;mode<4;++mode) {
@@ -460,4 +491,4 @@ void ExpiredZoomDoesNotBlockEnable() {
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 }
-int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); FullscreenRuntime(); FullscreenService(); total += checks; return failures; }
+int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); FullscreenRuntime(); FullscreenService(); RecoveryDoesNotBlockUpdateDownload(); total += checks; return failures; }

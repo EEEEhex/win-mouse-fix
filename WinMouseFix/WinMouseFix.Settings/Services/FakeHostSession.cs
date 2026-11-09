@@ -20,13 +20,14 @@ public sealed class FakeHostSession : IHostSession
         new() { Name = "zoom", State = "unverified" }
     ] };
     public bool RejectNext { get; set; }
+    public bool RejectNextDownload { get; set; }
     public Task<HostReply> SetDataLocationAsync(string location,ulong expected,CancellationToken cancellation = default) {
         if (RejectNext) { RejectNext = false; return Task.FromResult(Reply(false,"storage-error","storage","模拟迁移失败")); }
         if (expected != _config.Revision) return Task.FromResult(Reply(false,"revision-conflict"));
         if (location is not ("appdata" or "program")) return Task.FromResult(Reply(false,"bad-request"));
         Status.Storage.Location = location; Status.Storage.NativeError = 0; return Task.FromResult(Reply());
     }
-    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.1" };
+    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.2" };
     public Task<HostReply> ReadyAsync(CancellationToken cancellation = default) => Task.FromResult(Reply());
     public Task<HostReply> CheckUpdatesAsync(CancellationToken cancellation = default) {
         var id = Status.Update.CheckId+1;
@@ -34,6 +35,7 @@ public sealed class FakeHostSession : IHostSession
         Status.Update.CheckId = Status.Update.CompletedId = id; return Task.FromResult(Reply());
     }
     public Task<HostReply> DownloadUpdateAsync(ulong checkId,CancellationToken cancellation = default) {
+        if (RejectNextDownload) { RejectNextDownload=false; return Task.FromResult(Reply(false,"not-ready","update","Update is unavailable or no longer current")); }
         if (checkId != Status.Update.CompletedId || !Status.Update.CanInstall) return Task.FromResult(Reply(false,"not-ready"));
         Status.Update.State="downloading"; Status.Update.NotificationPending=false; Status.Update.TotalBytes=100*1024*1024; Status.Update.ReceivedBytes=37*1024*1024; Status.Update.BytesPerSecond=2*1024*1024; return Task.FromResult(Reply());
     }

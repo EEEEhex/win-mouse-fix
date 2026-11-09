@@ -104,11 +104,14 @@ std::string ProductService::StatusJson() {
     for (const auto name : {"content-drag","task-view","show-desktop","desktop-left","desktop-right","wheel","zoom"}) {
         JsonObject item; Text(item,L"name",name);
         const std::string_view feature(name);
-        const bool validated = feature == "wheel" ? (api_.validatedFlags & WheelSourceValidated) != 0 : feature == "zoom" && (api_.validatedFlags & NativeZoomValidated) != 0;
-        Text(item,L"state",!native ? "unavailable" : validated ? "supported" : "unverified");
-        Text(item,L"reason",!native ? "Required native touchpad APIs are unavailable" : validated ? (feature == "zoom" ? "Explicit local pinch observation retained for this OS patch and compatible pinch contract; other applications still need observation" : "Explicit local source/target validation passed for this OS patch and engine build; other applications still need observation") : feature == "wheel" ? "Bounded wheel planner is implemented; source isolation and real target response await explicit validation" :
-            feature == "zoom" ? "Independent pinch geometry is implemented; real target response is unverified" :
-            feature == "task-view" ? "Diagnostic triggering succeeded; progressive expansion was limited. The real side-button path needs confirmation" : "The new configurable side-button path requires confirmation");
+        const bool supported = feature == "wheel" ? (api_.validatedFlags & WheelSourceValidated) != 0 : feature == "zoom" && (api_.validatedFlags & NativeZoomValidated) != 0;
+        Text(item,L"state",!native ? "unavailable" : supported ? "supported" : "unverified");
+        const char* reason = "The new configurable side-button path requires confirmation";
+        if (!native) reason = "Required native touchpad APIs are unavailable";
+        else if (feature == "wheel") reason = supported ? "Ordinary wheel enhancement is available in this release" : "Ordinary wheel enhancement is inactive";
+        else if (feature == "zoom") reason = supported ? "Explicit local pinch observation retained for this OS patch and compatible pinch contract; other applications still need observation" : "Independent pinch geometry is implemented; real target response is unverified";
+        else if (feature == "task-view") reason = "Diagnostic triggering succeeded; progressive expansion was limited. The real side-button path needs confirmation";
+        Text(item,L"reason",reason);
         Text(item,L"trigger","not-run"); Text(item,L"continuous",feature == "task-view" ? "limited" : "not-run");
         Text(item,L"hold","not-run"); Text(item,L"reverse","not-run"); Text(item,L"release","not-run");
         Text(item,L"evidence",feature == "task-view" ? "docs/native-gesture-validation.md; fixed-trajectory observation only" : "");
@@ -187,7 +190,11 @@ ProtocolReply ProductService::DispatchInner(const ProtocolRequest& request) {
     if (request.command == "check-updates") { EmptyPayload(payload); if (!api_.checkUpdates) return Rejected("not-ready","Update service is unavailable"); api_.checkUpdates(); return StatusResponse(); }
     if (request.command == "download-update") {
         if (payload.Size() != 1 || !payload.HasKey(L"checkId")) return Rejected("bad-request","Expected update check identity");
-        if (store_.Current()->recoveryRequired || !api_.downloadUpdate || !api_.downloadUpdate(JsonUnsigned(payload,L"checkId"))) return Rejected("not-ready","Update is unavailable or no longer current"); return StatusResponse();
+        // A newer Host may understand a configuration this build cannot read.
+        // The update transaction backs it up verbatim; trial health checks and
+        // rollback still protect configurations the new build cannot recover.
+        if (!api_.downloadUpdate) return Rejected("update-unavailable","Update download service is unavailable");
+        if (!api_.downloadUpdate(JsonUnsigned(payload,L"checkId"))) return Rejected("update-not-ready","Update is unavailable or no longer current"); return StatusResponse();
     }
     if (request.command == "cancel-update" || request.command == "install-update") {
         EmptyPayload(payload); auto& action = request.command == "cancel-update" ? api_.cancelUpdate : api_.installUpdate;

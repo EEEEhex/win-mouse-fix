@@ -32,7 +32,7 @@ public sealed partial class MainWindow : Window
     private ToggleSwitch? _automaticUpdates;
     private Control? _checkUpdatesButton;
     private ToggleSwitch? _startup, _startupNotice, _disableInFullscreen;
-    private ComboBox? _dataLocation;
+    private ComboBox? _dataLocation, _wheelMode;
     private TextBlock? _dataLocationNote;
     private Expander? _moreSettings, _advancedSettings;
     private readonly Dictionary<uint,ComboBox> _bindingActions = [];
@@ -105,6 +105,7 @@ public sealed partial class MainWindow : Window
     public void Navigate(string tag) { Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == tag); }
     private void BuildPage() {
         _refresh.Clear(); _hostControls.Clear(); PageContent.Children.Clear(); _bindings = null; _bindingActions.Clear(); _bindingControls.Clear(); _bindingStructure = ""; _enabled = null; _automaticUpdates = null; _startup = null; _startupNotice = null; _disableInFullscreen = null; _dataLocation = null; _dataLocationNote = null; _moreSettings = null; _advancedSettings = null; _runtime = null; _capability = null;
+        _wheelMode = null;
         switch (_page) { case "general": General(); break; case "buttons": Buttons(); break; case "scrolling": Scrolling(); break; default: About(); break; }
         RefreshControls(); RefreshState();
         PageScroll.ChangeView(null,0,null,true);
@@ -257,6 +258,10 @@ public sealed partial class MainWindow : Window
     }
     private void Scrolling() {
         PageContent.Children.Add(Text(UiText.Get("滚动与手势"),true));
+        var mode = _wheelMode = RequiresHost(new ComboBox { Header = UiText.Get("普通滚轮增强") }); foreach(var label in new[]{UiText.Get("关闭"),UiText.Get("标准平滑"),UiText.Get("高平滑")}) mode.Items.Add(new ComboBoxItem { Content = label });
+        _refresh.Add(c => mode.SelectedIndex = c.Wheel.Mode == "off" ? 0 : c.Wheel.Mode == "regular" ? 1 : 2);
+        mode.SelectionChanged += (_,_) => { if (!_updating) Model.Edit(c => c.Wheel.Mode = mode.SelectedIndex == 0 ? "off" : mode.SelectedIndex == 1 ? "regular" : "high"); };
+        _capability = Text(""); PageContent.Children.Add(Card(Stack(mode,_capability,Number(UiText.Get("每格滚动量"),c => Math.Abs(c.Wheel.MmPerNotch),(c,v) => c.Wheel.MmPerNotch = Math.CopySign(v,c.Wheel.MmPerNotch),available: WheelAvailable),Reverse(UiText.Get("反转滚轮方向"),c => c.Wheel.MmPerNotch,(c,v) => c.Wheel.MmPerNotch = v,WheelAvailable))));
         var zoomBindings = Text("");
         _refresh.Add(c => zoomBindings.Text = string.Join("、",c.Bindings.Where(b => b.Action == "native-zoom").Select(b => Modifiers(b.Modifiers)+ButtonName(b.Button))));
         PageContent.Children.Add(Card(Stack(Text(UiText.Get("缩放")),Text(UiText.Get("按住侧键并滚动滚轮进行缩放；到达边界后停住，反向可继续。")),zoomBindings,
@@ -271,10 +276,6 @@ public sealed partial class MainWindow : Window
         var fingers = RequiresHost(new ComboBox { Header = UiText.Get("Windows 手势指数组"), ItemsSource = new[] {UiText.Get("三指"),UiText.Get("四指")} }); _refresh.Add(c => fingers.SelectedIndex = c.Shell.Fingers == 3 ? 0 : 1);
         fingers.SelectionChanged += (_,_) => { if (!_updating) Model.Edit(c => c.Shell.Fingers = fingers.SelectedIndex == 0 ? 3u : 4u); };
         PageContent.Children.Add(Card(Stack(Text(UiText.Get("系统手势")),fingers,Number(UiText.Get("左右桌面切换速度"),c => Math.Abs(c.Shell.MmPerCountX),(c,v) => c.Shell.MmPerCountX = Math.CopySign(v,c.Shell.MmPerCountX)),Number(UiText.Get("任务视图与显示桌面速度"),c => Math.Abs(c.Shell.MmPerCountY),(c,v) => c.Shell.MmPerCountY = Math.CopySign(v,c.Shell.MmPerCountY)),Reverse(UiText.Get("反转桌面切换方向"),c => c.Shell.MmPerCountX,(c,v) => c.Shell.MmPerCountX = v),Reverse(UiText.Get("反转上下手势方向"),c => c.Shell.MmPerCountY,(c,v) => c.Shell.MmPerCountY = v),Text(UiText.Get("请与 Windows 中的三指或四指手势设置保持一致。")),Button(UiText.Get("打开 Windows 触摸板设置"),async () => { await Launcher.LaunchUriAsync(new("ms-settings:devices-touchpad")); }))));
-        var mode = RequiresHost(new ComboBox { Header = UiText.Get("普通滚轮增强") }); foreach(var label in new[]{UiText.Get("关闭"),UiText.Get("标准平滑"),UiText.Get("高平滑")}) mode.Items.Add(new ComboBoxItem { Content = label });
-        _refresh.Add(c => { mode.SelectedIndex = c.Wheel.Mode == "off" ? 0 : c.Wheel.Mode == "regular" ? 1 : 2; bool supported = Model.Status.Capabilities.Any(x => x.Name == "wheel" && x.State == "supported"); ((ComboBoxItem)mode.Items[1]).IsEnabled = ((ComboBoxItem)mode.Items[2]).IsEnabled = supported; });
-        mode.SelectionChanged += (_,_) => { if (!_updating) Model.Edit(c => c.Wheel.Mode = mode.SelectedIndex == 0 ? "off" : mode.SelectedIndex == 1 ? "regular" : "high"); };
-        _capability = Text(""); PageContent.Children.Add(Card(Stack(mode,_capability,Number(UiText.Get("每格滚动量"),c => Math.Abs(c.Wheel.MmPerNotch),(c,v) => c.Wheel.MmPerNotch = Math.CopySign(v,c.Wheel.MmPerNotch),available: WheelAvailable),Reverse(UiText.Get("反转滚轮方向"),c => c.Wheel.MmPerNotch,(c,v) => c.Wheel.MmPerNotch = v,WheelAvailable))));
         var advanced = Stack(
             AdvancedPair(UiText.Get("手势识别"),Number(UiText.Get("拖动激活阈值（相对计数）"),c => c.Content.ThresholdCounts,(c,v) => c.Content.ThresholdCounts = v,0.000001,1000000),Number(UiText.Get("方向优势轴比例"),c => c.Shell.DirectionRatio,(c,v) => c.Shell.DirectionRatio = v,1.01,8)),Separator(),
             AdvancedPair(UiText.Get("按键时序"),Number(UiText.Get("双击等待（毫秒）"),c => c.Timing.DoubleClickMs,(c,v) => c.Timing.DoubleClickMs = (uint)v,100,2000),Number(UiText.Get("按住等待（毫秒）"),c => c.Timing.HoldMs,(c,v) => c.Timing.HoldMs = (uint)v,100,5000)),Separator(),
@@ -339,7 +340,17 @@ public sealed partial class MainWindow : Window
         if (_runtime is not null && Model.Status.Requested && Model.Status.FullscreenPaused && Model.Status.State == "paused") _runtime.Text = UiText.Get("检测到全屏应用，鼠标增强已自动暂停。");
         if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") && !ZoomAvailable())
             _runtime.Text += "\n"+UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。");
-        if (_capability is not null) _capability.Text = Model.Status.Capabilities.FirstOrDefault(c => c.Name == "wheel")?.State switch { "supported" => UiText.Get("滚轮增强可用。"), "unavailable" => UiText.Get("当前系统不支持滚轮增强。"), _ => UiText.Get("滚轮增强暂不可用，普通滚轮保持原有行为。") };
+        if (_wheelMode is { } wheelMode && _capability is { } capability) {
+            var wheelState = Model.Status.Capabilities.FirstOrDefault(c => c.Name == "wheel")?.State;
+            var supported = wheelState == "supported";
+            ((ComboBoxItem)wheelMode.Items[1]).IsEnabled = supported;
+            ((ComboBoxItem)wheelMode.Items[2]).IsEnabled = supported;
+            capability.Text = wheelState switch {
+                "supported" => UiText.Get("滚轮增强可用。"),
+                "unavailable" => UiText.Get("当前系统不支持滚轮增强。"),
+                _ => UiText.Get("滚轮增强暂不可用，普通滚轮保持原有行为。")
+            };
+        }
         if (_identifyButton is not null && Model.Status.RecordedButton is { } found && found.Serial > _lastIdentifiedSerial) { _lastIdentifiedSerial = found.Serial; _identifyButton.SelectedIndex = found.Button == "back" ? 0 : found.Button == "forward" ? 1 : found.Button == "middle" ? 2 : -1; if (_identifyModifiers is not null) for(int i = 0; i < 4; ++i) _identifyModifiers[i].IsChecked = (found.Modifiers & (1u<<i)) != 0; }
         _updating = false;
         TryShowUpdateReminder();
@@ -470,6 +481,21 @@ public sealed partial class MainWindow : Window
                 ((FakeHostSession)_session).RejectNext = true; selector.SelectedItem = selector.Items.OfType<ComboBoxItem>().First(i => (string)i.Tag == "volume-up"); await Task.Delay(200);
                 if (Model.Committed.Bindings.First(b => b.Id == 1).Action != "forward" || Model.Issue is null) throw new InvalidOperationException("Rejected inline binding edit was shown as committed.");
                 await Model.ReloadAsync(); await ChangeBindingActionAsync(1,"back"); await Task.Delay(200);
+            }
+            if (page == "scrolling") {
+                var fake = (FakeHostSession)_session;
+                fake.Status.Capabilities.Single(c => c.Name == "wheel").State = "supported";
+                await Model.ReloadAsync();
+                await Task.Delay(150);
+                var mode = _wheelMode ?? throw new InvalidOperationException("Wheel enhancement control missing.");
+                var before = mode.SelectedIndex;
+                foreach (var choice in new[] { (Index: 1, Mode: "regular"), (Index: 2, Mode: "high") }) {
+                    if (!((ComboBoxItem)mode.Items[choice.Index]).IsEnabled) throw new InvalidOperationException("Released wheel mode is unavailable.");
+                    mode.SelectedIndex = choice.Index;
+                    if (!await Model.FlushAsync() || Model.Committed.Wheel.Mode != choice.Mode) throw new InvalidOperationException("Wheel mode did not reach the Host.");
+                }
+                mode.SelectedIndex = before;
+                if (!await Model.FlushAsync()) throw new InvalidOperationException("Could not restore the original wheel mode.");
             }
             foreach(var child in PageContent.Children.OfType<FrameworkElement>()) {
                 var origin = child.TransformToVisual(Root).TransformPoint(new(0,0));

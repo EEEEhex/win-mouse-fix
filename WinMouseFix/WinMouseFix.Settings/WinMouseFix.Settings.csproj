@@ -17,7 +17,7 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>2.1.1</Version>
+    <Version>2.1.2</Version>
     <Product>Win Mouse Fix</Product>
     <Company>EEEEhex</Company>
     <Authors>EEEEhex</Authors>

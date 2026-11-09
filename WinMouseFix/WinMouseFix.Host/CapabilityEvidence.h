@@ -6,6 +6,13 @@ namespace wmf::host {
 // Bump when pinch contact semantics or paired-source isolation change.
 // Version/resource rebuilds do not change this contract.
 inline constexpr std::uint32_t PinchValidationContract = 1;
+// The ordinary wheel source path passed release acceptance. Keep the existing
+// capture ABI flag while leaving local diagnostic evidence independent.
+inline std::uint32_t ReleasedCaptureFlags(const Capabilities& caps, std::uint32_t localEvidence) noexcept {
+    constexpr auto required = RequiredApis | ActionApi;
+    if ((caps.apiBits & required) != required) return 0;
+    return WheelSourceValidated | (localEvidence & NativeZoomValidated);
+}
 // Ordinary wheel and Shell diagnostics remain build-specific. Pinch acceptance
 // survives compatible rebuilds on the same OS patch and ABI.
 class CapabilityEvidence {

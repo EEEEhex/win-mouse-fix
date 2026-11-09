@@ -38,7 +38,7 @@ public sealed partial class MainWindow
                 e.Cancel = true;
                 if (!await Model.FlushAsync()) throw new InvalidOperationException(UiText.Get("请先保存设置后再更新。"));
                 var reply = await _session.DownloadUpdateAsync(result.CompletedId);
-                if (!reply.Ok) throw new InvalidOperationException(UiText.Get("无法开始更新，请重新检查版本后重试。"));
+                if (!reply.Ok) throw new InvalidOperationException(UpdateStartError(reply,Model.Status.RecoveryRequired));
                 FillUpdateDialog(dialog,Model.Status.Update);
             } catch (Exception error) { e.Cancel = true; dialog.Content = Text(error.Message); }
             finally { acting = false; deferral.Complete(); }
@@ -88,6 +88,13 @@ public sealed partial class MainWindow
         finally { _updateDialog = null; }
     }
     private static bool ValidReleaseUrl(string url) => Uri.TryCreate(url,UriKind.Absolute,out var value) && value.Scheme == "https" && value.Host.Equals("github.com",StringComparison.OrdinalIgnoreCase) && value.AbsolutePath.StartsWith("/EEEEhex/win-mouse-fix/releases/tag/",StringComparison.Ordinal);
+    private static string UpdateStartError(HostReply reply,bool recovery) => reply.Code switch {
+        "not-ready" when recovery => UiText.Get("旧版后台因配置兼容问题拒绝更新。请退出后台后，用完整发布包覆盖程序文件并重启，保留原配置和 Data 文件夹。"),
+        "not-ready" or "update-not-ready" => UiText.Get("更新结果已失效或更新包不可用，请重新检查版本后重试。"),
+        "update-unavailable" => UiText.Get("后台更新服务不可用，请退出并重新启动 Win Mouse Fix。"),
+        "busy" => UiText.Get("已有更新任务正在进行，请稍候。"),
+        _ => UiText.Format("无法开始更新：{0}（{1}）",reply.Message,reply.Code)
+    };
     private void FillUpdateDialog(ContentDialog dialog,UpdateStatus update) {
         dialog.Tag = update; dialog.CloseButtonText = UiText.Get("知道了"); dialog.PrimaryButtonText = ""; _updateProgress = null; _updateProgressText = null;
         if (update.State is "downloading" or "verifying" or "ready" or "installing") {
@@ -149,6 +156,18 @@ public sealed partial class MainWindow
             dialog.Hide(); await pending;
         }
         fake.NextUpdate = new() { State="available",CanInstall=true,Version="2.2.0",Title="v2.2.0",Notes="- Improve scrolling\n- Fix settings",Url=RepositoryUrl+"/releases/tag/v2.2.0" };
+        foreach (var recovery in new[]{true,false}) {
+            fake.Status.RecoveryRequired=recovery; fake.RejectNextDownload=true;
+            var rejectedDialog=CheckForUpdatesAsync(); await Task.Delay(250);
+            var failedDialog=_updateDialog ?? throw new InvalidOperationException("Update failure dialog missing.");
+            var failedButton=FindVisual<Button>(failedDialog,item => item.Name=="PrimaryButton") ?? throw new InvalidOperationException("Update failure action missing.");
+            var failedPeer=new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(failedButton);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)failedPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke(); await Task.Delay(250);
+            var expected=UpdateStartError(new HostReply { Code="not-ready" },recovery);
+            if (FindVisual<TextBlock>(failedDialog,item => item.Text==expected) is null) throw new InvalidOperationException("Update rejection did not explain the actual recovery/stale-result cause.");
+            if (recovery) await CaptureAsync(FindVisual<FrameworkElement>(failedDialog,item => item.Name=="BackgroundElement") ?? failedDialog,Path.Combine(directory,"update-legacy-recovery.png"));
+            fake.Status.RecoveryRequired=false; failedDialog.Hide(); await rejectedDialog;
+        }
         var deliveryDialog = CheckForUpdatesAsync(); await Task.Delay(250);
         if (_updateDialog is null || _updateDialog.PrimaryButtonText != UiText.Get("立即更新")) throw new InvalidOperationException("Automatic installation action missing.");
         await CaptureAsync(FindVisual<FrameworkElement>(_updateDialog,item => item.Name == "BackgroundElement") ?? _updateDialog,Path.Combine(directory,"update-install-available.png"));

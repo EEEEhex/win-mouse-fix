@@ -136,7 +136,6 @@ struct Resident {
         const auto menu = CreatePopupMenu();
         AppendMenuW(menu,MF_STRING,SettingsId,L"设置(&S)");
         AppendMenuW(menu,MF_STRING|(runtime && runtime->Requested() ? MF_CHECKED : 0),ToggleId,L"启用增强(&E)");
-        AppendMenuW(menu,MF_STRING|MF_GRAYED,0,L"滚轮增强（待验证）");
         AppendMenuW(menu,MF_STRING|(startup && startup->Status().registered ? MF_CHECKED : 0),StartupId,L"登录时启动(&L)");
         AppendMenuW(menu,MF_SEPARATOR,0,nullptr); AppendMenuW(menu,MF_STRING,ExitId,L"退出(&X)");
         POINT cursor{}; GetCursorPos(&cursor); SetForegroundWindow(window);
@@ -301,11 +300,13 @@ int RunResident(HINSTANCE instance,const Options& options) {
     Capabilities nativeCaps; const auto queried = options.smoke ? state.simulation.RuntimeApi().engine.capabilities(&nativeCaps) : WmfPlatformCapabilities(&nativeCaps);
     if (!options.updateTrial.empty() && (!queried || configuration->recoveryRequired)) throw std::runtime_error("Updated Host did not pass configuration/module health checks");
     state.evidence = std::make_unique<CapabilityEvidence>(environment,nativeCaps);
-    const std::uint32_t validatedFlags = queried && !options.smoke ? state.evidence->Flags() : 0;
-    state.runtime = options.smoke ? std::make_unique<ProductRuntime>(environment,configuration->config.input,false,state.simulation.RuntimeApi()) : std::make_unique<ProductRuntime>(environment,configuration->config.input,false,ProductRuntimeApi{},validatedFlags);
+    const auto localEvidence = queried && !options.smoke ? state.evidence->Flags() : 0;
+    const auto captureFlags = queried ? ReleasedCaptureFlags(nativeCaps,localEvidence) : 0;
+    const auto runtimeApi = options.smoke ? state.simulation.RuntimeApi() : ProductRuntimeApi{};
+    state.runtime = std::make_unique<ProductRuntime>(environment,configuration->config.input,false,runtimeApi,captureFlags);
     state.startup = std::make_unique<StartupRegistration>(environment,environment.executableDirectory/L"WinMouseFix.Host.exe",options.smoke ? state.simulation.Startup() : RealStartupApi());
     state.log = std::make_unique<ProductLog>(environment.dataDirectory/L"logs",*state.runtime,configuration->config.input.qpcFrequency,options.smoke);
-    ProductServiceApi api; api.simulation = options.smoke; api.validatedFlags = validatedFlags; if (options.smoke) api.capabilities = state.simulation.RuntimeApi().engine.capabilities;
+    ProductServiceApi api; api.simulation = options.smoke; api.validatedFlags = captureFlags; if (options.smoke) api.capabilities = runtimeApi.engine.capabilities;
     api.fullscreenDetected = [&] { return state.fullscreenDetected.load(); };
     state.updates = std::make_unique<UpdateService>(options.smoke,environment.dataDirectory/L"update-reminder.txt",options.smoke ? UpdateFetch{[](unsigned,std::stop_token) { return std::string("[]"); }} : UpdateFetch{},options.smoke ? std::filesystem::path{} : environment.executableDirectory);
     api.updateStatus = [&] { return state.updates->StatusJson(); }; api.checkUpdates = [&] { state.updates->Request(GetTickCount64()); };
@@ -339,10 +340,10 @@ int RunResident(HINSTANCE instance,const Options& options) {
     if (!SetTimer(state.window,1,options.smoke ? 50 : 200,nullptr)) throw std::runtime_error("Cannot start resident status timer");
     state.log->Record("startup","WinMouseFix "+std::string(ProductVersion)+"; x64; SDK 10.0.28000.0; simulation="+std::to_string(options.smoke),configuration->config.input.revision);
     if (options.trace) state.log->DetailFor();
-    bool limited = configuration->config.input.wheelMode != WheelMode::Off && !(validatedFlags & WheelSourceValidated);
+    bool limited{};
     for (unsigned i = 0; i < configuration->config.input.bindingCount; ++i)
-        if (configuration->config.input.bindings[i].action == Action::NativeZoom && !(validatedFlags & NativeZoomValidated)) limited = true;
-    if (limited) state.log->Record("validation-expired","Unverified wheel/pinch actions are inactive; other bindings remain available");
+        if (configuration->config.input.bindings[i].action == Action::NativeZoom && !(captureFlags & NativeZoomValidated)) limited = true;
+    if (limited) state.log->Record("validation-expired","Unverified pinch actions are inactive; other bindings remain available");
     state.updatePermitted = !configuration->recoveryRequired && !state.lastTip.empty();
     if (!options.smoke && state.updatePermitted && options.updateTrial.empty()) state.runtime->Enable(configuration->config.enabled);
     if (!configuration->recoveryRequired && !state.lastTip.empty() && options.updateTrial.empty()) {
