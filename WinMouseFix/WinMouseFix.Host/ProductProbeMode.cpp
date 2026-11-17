@@ -49,7 +49,7 @@ struct Panel {
         else evidence->RecordFailure(zoom,stats.rawWheels,stats.blockedWheels,accepted,frames,Utf8(text),runtime->Failure());
         saved = passed;
         recordingError.clear();
-        notice = passed ? L"已记录本机证据。退出此窗口后重新启动后台，才会开放对应能力。" : L"已记录未通过；没有开放缩放/增强。可以直接关闭窗口。";
+        notice = passed ? L"已保存本次实测通过记录。" : L"已保存本次实测未通过记录。";
     }
     void Tick() {
         if (!runtime) return;

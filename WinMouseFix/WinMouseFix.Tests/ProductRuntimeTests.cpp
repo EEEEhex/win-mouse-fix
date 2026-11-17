@@ -378,14 +378,16 @@ void ZoomOnlyService() {
 void OptionalCapabilities() {
     Capabilities caps;
     caps.apiBits = RequiredApis | ActionApi;
-    const auto releasedWheel = ReleasedCaptureFlags(caps, 0);
-    const auto releasedWithZoom = ReleasedCaptureFlags(caps, NativeZoomValidated);
-    VERIFY(releasedWheel == WheelSourceValidated);
+    const auto releasedWithZoom = ReleasedCaptureFlags(caps);
     VERIFY(releasedWithZoom == (WheelSourceValidated | NativeZoomValidated));
+    caps.osBuild = 26300;
+    caps.osRevision = 9974;
+    caps.revisionKnown = 1;
+    VERIFY(ReleasedCaptureFlags(caps) == releasedWithZoom);
     caps.apiBits = RequiredApis;
-    VERIFY(ReleasedCaptureFlags(caps, WheelSourceValidated | NativeZoomValidated) == 0);
+    VERIFY(ReleasedCaptureFlags(caps) == 0);
     VERIFY(DefaultBindingConfig().wheelMode == WheelMode::Off);
-    for (const std::uint32_t flags : {0u,releasedWheel,static_cast<unsigned>(NativeZoomValidated),releasedWithZoom,static_cast<unsigned>(ExplicitValidationProbe)}) {
+    for (const std::uint32_t flags : {0u,static_cast<unsigned>(WheelSourceValidated),static_cast<unsigned>(NativeZoomValidated),releasedWithZoom,static_cast<unsigned>(ExplicitValidationProbe)}) {
         auto config=DefaultBindingConfig(); config.wheelMode=WheelMode::High;
         config.bindings[config.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
         Fixture f; f.hold=f.noMotion=true; ProductRuntime runtime(config,true,f.Api(),flags);

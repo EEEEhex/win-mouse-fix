@@ -300,8 +300,7 @@ int RunResident(HINSTANCE instance,const Options& options) {
     Capabilities nativeCaps; const auto queried = options.smoke ? state.simulation.RuntimeApi().engine.capabilities(&nativeCaps) : WmfPlatformCapabilities(&nativeCaps);
     if (!options.updateTrial.empty() && (!queried || configuration->recoveryRequired)) throw std::runtime_error("Updated Host did not pass configuration/module health checks");
     state.evidence = std::make_unique<CapabilityEvidence>(environment,nativeCaps);
-    const auto localEvidence = queried && !options.smoke ? state.evidence->Flags() : 0;
-    const auto captureFlags = queried ? ReleasedCaptureFlags(nativeCaps,localEvidence) : 0;
+    const auto captureFlags = queried ? ReleasedCaptureFlags(nativeCaps) : 0;
     const auto runtimeApi = options.smoke ? state.simulation.RuntimeApi() : ProductRuntimeApi{};
     state.runtime = std::make_unique<ProductRuntime>(environment,configuration->config.input,false,runtimeApi,captureFlags);
     state.startup = std::make_unique<StartupRegistration>(environment,environment.executableDirectory/L"WinMouseFix.Host.exe",options.smoke ? state.simulation.Startup() : RealStartupApi());
@@ -340,10 +339,6 @@ int RunResident(HINSTANCE instance,const Options& options) {
     if (!SetTimer(state.window,1,options.smoke ? 50 : 200,nullptr)) throw std::runtime_error("Cannot start resident status timer");
     state.log->Record("startup","WinMouseFix "+std::string(ProductVersion)+"; x64; SDK 10.0.28000.0; simulation="+std::to_string(options.smoke),configuration->config.input.revision);
     if (options.trace) state.log->DetailFor();
-    bool limited{};
-    for (unsigned i = 0; i < configuration->config.input.bindingCount; ++i)
-        if (configuration->config.input.bindings[i].action == Action::NativeZoom && !(captureFlags & NativeZoomValidated)) limited = true;
-    if (limited) state.log->Record("validation-expired","Unverified pinch actions are inactive; other bindings remain available");
     state.updatePermitted = !configuration->recoveryRequired && !state.lastTip.empty();
     if (!options.smoke && state.updatePermitted && options.updateTrial.empty()) state.runtime->Enable(configuration->config.enabled);
     if (!configuration->recoveryRequired && !state.lastTip.empty() && options.updateTrial.empty()) {

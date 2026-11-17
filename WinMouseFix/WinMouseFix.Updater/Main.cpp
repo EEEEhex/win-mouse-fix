@@ -28,7 +28,10 @@ HANDLE OpenParent(DWORD pid,const fs::path& image) {
 void Wait(HANDLE process) { if (process) Require(WaitForSingleObject(process,30000) == WAIT_OBJECT_0,"process-exit-timeout"); }
 PROCESS_INFORMATION Launch(const fs::path& root,std::wstring arguments,HANDLE job=nullptr) {
     auto exe = root/L"WinMouseFix.Host.exe"; auto command = L"\""+exe.wstring()+L"\" "+arguments; STARTUPINFOW info{sizeof(info)}; PROCESS_INFORMATION process{};
-    Require(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,job ? CREATE_SUSPENDED : 0,nullptr,root.c_str(),&info,&process),"restart-failed");
+    DWORD flags = job ? CREATE_SUSPENDED : 0;
+    // The isolated trial uses a console executable as its fake Host.
+    if (quietTest) flags |= CREATE_NO_WINDOW;
+    Require(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,flags,nullptr,root.c_str(),&info,&process),"restart-failed");
     if (job && (!AssignProcessToJobObject(job,process.hProcess) || ResumeThread(process.hThread)==static_cast<DWORD>(-1))) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); CloseHandle(process.hThread); CloseHandle(process.hProcess); throw std::runtime_error("trial-job-failed"); }
     CloseHandle(process.hThread); process.hThread = nullptr; return process;
 }

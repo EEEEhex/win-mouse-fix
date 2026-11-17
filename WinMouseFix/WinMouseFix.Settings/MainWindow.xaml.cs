@@ -338,8 +338,9 @@ public sealed partial class MainWindow : Window
         if (_enabled is not null) { _enabled.IsOn = Model.Status.Requested; _enabled.IsEnabled = Model.Connected && !_closing && !Model.Status.Storage.Switching && !UpdateBusy; }
         if (_runtime is not null) _runtime.Text = Model.Status.State switch { "enabled" => UiText.Get("后台已启用"), "starting" => UiText.Get("正在启动输入引擎…"), "faulted" => UiText.Format("后台发生错误，已停止接管。错误 {0}，清理 {1}",Model.Status.Failure.NativeError,Model.Status.Failure.CleanupError), "stopping" => UiText.Get("正在退出，请松开仍按住的侧键。"), _ => UiText.Get("后台已暂停，普通输入保持原样。") };
         if (_runtime is not null && Model.Status.Requested && Model.Status.FullscreenPaused && Model.Status.State == "paused") _runtime.Text = UiText.Get("检测到全屏应用，鼠标增强已自动暂停。");
-        if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") && !ZoomAvailable())
-            _runtime.Text += "\n"+UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。");
+        if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") &&
+            Model.Status.Capabilities.Any(c => c.Name == "zoom" && c.State == "unavailable"))
+            _runtime.Text += "\n" + UiText.Get("当前系统缺少原生缩放所需的触控板接口。");
         if (_wheelMode is { } wheelMode && _capability is { } capability) {
             var wheelState = Model.Status.Capabilities.FirstOrDefault(c => c.Name == "wheel")?.State;
             var supported = wheelState == "supported";
@@ -509,11 +510,15 @@ public sealed partial class MainWindow : Window
         await RunUpdateSmokeAsync(directory);
         var zoomId = Model.Committed.Bindings.Max(b => b.Id)+1;
         var wasEnabled = Model.Committed.Enabled;
+        var zoomCapability = ((FakeHostSession)_session).Status.Capabilities.Single(c => c.Name == "zoom");
+        var previousZoomState = zoomCapability.State;
+        zoomCapability.State = "unavailable";
         if (!await Model.SaveBindingAsync(new() { Id=zoomId,Button="back",Trigger="wheel",Action="native-zoom" })) throw new InvalidOperationException("Failed to prepare isolated existing zoom binding.");
-        await Model.SetEnabledAsync(true); if (!Model.Committed.Enabled) throw new InvalidOperationException("An existing unverified zoom binding blocked enable.");
+        await Model.SetEnabledAsync(true); if (!Model.Committed.Enabled) throw new InvalidOperationException("An unavailable zoom binding blocked enable.");
         Navigate("general"); await Task.Delay(150);
-        if (_enabled is null || !_enabled.IsEnabled || _runtime is null || !_runtime.Text.Contains(UiText.Get("缩放待重新验证，已暂时停用；其他手势可正常使用。"))) throw new InvalidOperationException("Optional zoom availability warning or enable control missing.");
-        await CaptureAsync(Root,Path.Combine(directory,"general-zoom-unverified.png"));
+        if (_enabled is null || !_enabled.IsEnabled || _runtime is null || !_runtime.Text.Contains(UiText.Get("当前系统缺少原生缩放所需的触控板接口。"))) throw new InvalidOperationException("Optional zoom availability warning or enable control missing.");
+        await CaptureAsync(Root,Path.Combine(directory,"general-zoom-unavailable.png"));
+        zoomCapability.State = previousZoomState;
         Model.Edit(c => c.Bindings.RemoveAll(b => b.Id==zoomId)); if (!await Model.FlushAsync()) throw new InvalidOperationException("Failed to restore isolated zoom smoke configuration.");
         await Model.SetEnabledAsync(wasEnabled); if (Model.Committed.Enabled!=wasEnabled) throw new InvalidOperationException("Failed to restore isolated enable state.");
         await RunBindingEditorSmokeAsync(directory);

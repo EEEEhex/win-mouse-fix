@@ -7,7 +7,7 @@
   "全屏时禁用": "Disable in fullscreen",
   "当前应用全屏时暂停鼠标增强，退出全屏后自动恢复。": "Pause mouse enhancements while the active app is fullscreen. Resume automatically when you leave fullscreen.",
   "检测到全屏应用，鼠标增强已自动暂停。": "A fullscreen app is active. Mouse enhancements are temporarily paused.",
-  "缩放待重新验证，已暂时停用；其他手势可正常使用。": "Zoom is inactive until revalidated. Other gestures remain available.",
+  "当前系统缺少原生缩放所需的触控板接口。": "This system lacks the touchpad APIs required for native zoom.",
   "配置保存位置": "Configuration storage",
   "保存到 Appdata 目录": "Save in AppData",
   "保存到程序所在目录": "Save in the program directory",

@@ -109,7 +109,7 @@ std::string ProductService::StatusJson() {
         const char* reason = "The new configurable side-button path requires confirmation";
         if (!native) reason = "Required native touchpad APIs are unavailable";
         else if (feature == "wheel") reason = supported ? "Ordinary wheel enhancement is available in this release" : "Ordinary wheel enhancement is inactive";
-        else if (feature == "zoom") reason = supported ? "Explicit local pinch observation retained for this OS patch and compatible pinch contract; other applications still need observation" : "Independent pinch geometry is implemented; real target response is unverified";
+        else if (feature == "zoom") reason = supported ? "Native pinch zoom is available in this release" : "Native pinch zoom is inactive";
         else if (feature == "task-view") reason = "Diagnostic triggering succeeded; progressive expansion was limited. The real side-button path needs confirmation";
         Text(item,L"reason",reason);
         Text(item,L"trigger","not-run"); Text(item,L"continuous",feature == "task-view" ? "limited" : "not-run");

@@ -109,6 +109,10 @@ void HelperProcesses() {
         STARTUPINFOW info{sizeof(info)}; PROCESS_INFORMATION process{}; const bool launched=CreateProcessW((tx/L"worker.exe").c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,root.c_str(),&info,&process)!=0; VERIFY(launched); if (!launched) continue;
         VERIFY(WaitForSingleObject(process.hProcess,20000)==WAIT_OBJECT_0); DWORD code{}; GetExitCodeProcess(process.hProcess,&code); if(code==STILL_ACTIVE) { TerminateProcess(process.hProcess,1); WaitForSingleObject(process.hProcess,5000); } CloseHandle(process.hThread); CloseHandle(process.hProcess);
         const bool success=std::wstring_view(scenario)==L"success"; VERIFY(code==(success||recovery?0u:1u)); VERIFY(ReadManifest(root).version==(success?"2.1.0":"2.0.0")); VERIFY(!TransactionPending(root)); VERIFY(ReadText(data/L"config.json")=="user configuration");
+        if (!success && !recovery) {
+            const auto error = tx/L"handoff.error";
+            VERIFY(fs::is_regular_file(error) && ReadText(error)=="new-version-exited");
+        }
         if (success) VERIFY(fs::exists(tx/L"commit.ok")); else { const auto deadline=GetTickCount64()+3000; while(!fs::exists(root/L"old-restarted") && GetTickCount64()<deadline) Sleep(10); VERIFY(fs::exists(root/L"old-restarted")); }
         // Trial fixtures exit after commit/abort; let their process handles close before fixture cleanup.
         Sleep(200);
