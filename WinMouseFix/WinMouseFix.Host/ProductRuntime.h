@@ -19,6 +19,7 @@ struct ProductRuntimeApi {
     decltype(&WmfProductCaptureRevision) revision{WmfProductCaptureRevision};
     decltype(&WmfProductCaptureRecording) recording{WmfProductCaptureRecording};
     bool simulation{};
+    bool monitorInputSession{};
 };
 enum class ProductRuntimeState : unsigned { Paused, Starting, Enabled, Faulted, Stopping, Stopped };
 class ProductRuntime {
@@ -33,6 +34,8 @@ public:
     void Enable(bool) noexcept;
     void SetFullscreenPaused(bool) noexcept;
     bool FullscreenPaused() const noexcept { return fullscreenPaused_; }
+    void RefreshInputSession(bool available,bool changed,bool remote) noexcept;
+    bool SessionPaused() const noexcept { return sessionPaused_; }
     bool ApplySavedEnabled(bool,std::uint64_t expectedControlEpoch) noexcept;
     std::uint64_t ControlEpoch() const noexcept { return controlEpoch_; }
     std::uint64_t Generation() const noexcept { return generation_; }
@@ -55,12 +58,14 @@ private:
     static bool Receive(void*,const InputEvent*) noexcept;
     bool Receive(const InputEvent&) noexcept;
     void Fault(Result) noexcept;
+    void InputFailure(Result) noexcept;
+    void InvalidateInput() noexcept;
     void CleanupFailure(Result) noexcept;
     void Worker() noexcept;
     void Capture() noexcept;
     void Complete(std::uint64_t,bool) noexcept;
     void SetEnabled(bool) noexcept;
-    bool Running() const noexcept { return !fullscreenPaused_ && (requested_ || recording_); }
+    bool Running() const noexcept { return !fullscreenPaused_ && !sessionPaused_ && (requested_ || recording_); }
     std::shared_ptr<const BindingConfig> Resolve(std::uint64_t);
     std::shared_ptr<const BindingConfig> Current();
     ProductRuntimeApi api_;
@@ -78,6 +83,11 @@ private:
     std::atomic<bool> requested_{},workerReady_{},workerPaused_{true},captureReady_{},workerDone_{},captureDone_{},cancel_{},captureCancel_{};
     std::atomic<bool> recording_{},recordingDirty_{};
     std::atomic<bool> fullscreenPaused_{};
+    std::atomic<bool> sessionPaused_{},retireSessionCapture_{};
+    std::atomic<std::uint64_t> sessionPauseId_{},workerSessionAck_{},captureSessionAck_{};
+    Result pendingSessionFailure_{};
+    std::uint64_t sessionResumeAfter_{},sessionFailureDeadline_{};
+    bool sessionTransition_{};
     std::atomic<bool> abandonedCapture_{};
     std::atomic<std::uint64_t> generation_{1},readyGeneration_{},accepted_{},processed_{},activeRevision_{},lostTraces_{};
     std::atomic<std::uint64_t> controlEpoch_{1};

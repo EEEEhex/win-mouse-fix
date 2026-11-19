@@ -27,6 +27,7 @@ struct Fixture {
     std::atomic<std::int64_t> extraWheel{};
     std::atomic<double> radius{};
     std::atomic<bool> held{},owned{},release{},extraMotion{},second{},logicalCanceled{},cancelPending{},foreground{true};
+    std::atomic<bool> denyInput{};
     std::atomic<std::uint64_t> applied{},active{},lastRevision{};
     bool hold{},shell{},failCapture{},failSubmit{},recordOnly{},failDestroy{},noMotion{},zoom{};
     DWORD captureThread{},destroyThread{};
@@ -57,6 +58,7 @@ struct Fixture {
         a.engine.openPlatform = [](PlatformHandle,const DeviceConfig*) noexcept -> Result { ++fixture->opened; return {}; };
         a.engine.submit = [](PlatformHandle,const ContactFrame* frame,MappedFrame*) noexcept -> Result {
             auto& f = *fixture;
+            if (f.denyInput) return {Status::NativeFailure,ERROR_ACCESS_DENIED};
             if (f.failSubmit && f.submitted == 1) return {Status::NativeFailure,123,456};
             f.frames.push_back(*frame); f.radius = frame->contacts[1].xMm; if (f.shell) f.foreground = false; ++f.submitted; return {};
         };
@@ -79,6 +81,7 @@ struct Fixture {
                 if (f.enables.fetch_add(1) == 0) f.Press(!f.recordOnly && !f.noMotion);
             }
             if (command == CaptureCommand::Disable || command == CaptureCommand::Cancel) f.cancelPending = true;
+            if (command == CaptureCommand::EndSession) { f.held = false; f.owned = false; f.active = 0; }
             if (command == CaptureCommand::CompleteDrag) { ++f.completed; if (!f.held) { f.owned = false; f.active = 0; } }
             return {};
         };
@@ -472,6 +475,43 @@ void FullscreenService() {
     runtime.ReportFailure({Status::NativeFailure,321}); runtime.SetFullscreenPaused(true); runtime.SetFullscreenPaused(false); VERIFY(!runtime.Failure() && !f.created);
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
+void SessionSwitchRuntime() {
+    const auto config = DefaultProductConfig(false).input;
+    Fixture f; f.hold = true;
+    auto api = f.Api(); api.monitorInputSession = true;
+    ProductRuntime runtime(config,true,api);
+    VERIFY(Wait([&] { return runtime.State() == ProductRuntimeState::Enabled && f.held && f.submitted >= 2; }));
+    // The input API can fail while the Host still sees the departing session as active.
+    f.denyInput = true; f.extraMotion = true;
+    VERIFY(Wait([&] { return runtime.SessionPaused(); }));
+    VERIFY(runtime.Failure() && runtime.Requested() && runtime.State() == ProductRuntimeState::Paused);
+    runtime.RefreshInputSession(false,true,false);
+    VERIFY(Wait([&] { return f.destroyed == 1; }));
+    VERIFY(!f.held && !f.actions && runtime.Failure());
+    f.denyInput = false;
+    runtime.SetFullscreenPaused(true);
+    runtime.RefreshInputSession(true,true,true);
+    VERIFY(Wait([&] { runtime.RefreshInputSession(true,false,true); return !runtime.SessionPaused(); }));
+    VERIFY(runtime.Requested() && f.created == 1 && runtime.State() == ProductRuntimeState::Paused);
+    runtime.SetFullscreenPaused(false);
+    VERIFY(Wait([&] { return f.enables == 2 && runtime.State() == ProductRuntimeState::Enabled; }));
+    VERIFY(runtime.Failure() && f.opened == 2 && !f.actions);
+    runtime.RefreshInputSession(false,true,true);
+    runtime.Enable(false);
+    runtime.RefreshInputSession(true,true,false);
+    VERIFY(Wait([&] { runtime.RefreshInputSession(true,false,false); return !runtime.SessionPaused(); }));
+    VERIFY(!runtime.Requested() && f.created == 2 && f.destroyed == 2 && runtime.State() == ProductRuntimeState::Paused);
+    runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }) && runtime.Failure());
+}
+void InputAccessFailureWithoutSessionSwitch() {
+    Fixture f; f.failCapture = true;
+    auto api = f.Api(); api.monitorInputSession = true;
+    ProductRuntime runtime(DefaultProductConfig(false).input,true,api);
+    VERIFY(Wait([&] { return runtime.SessionPaused(); }));
+    VERIFY(Wait([&] { runtime.RefreshInputSession(true,false,false); return runtime.State() == ProductRuntimeState::Faulted; }));
+    VERIFY(runtime.Failure().nativeError == ERROR_ACCESS_DENIED && !runtime.Requested());
+    runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); }));
+}
 void ExpiredZoomDoesNotBlockEnable() {
     auto config=DefaultProductConfig(false); config.input.bindings[config.input.bindingCount++]={5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
     auto disk=std::make_unique<ServiceFiles>(); disk->active=SerializeConfig(config); ConfigStore store(std::move(disk)); VERIFY(store.Load());
@@ -493,4 +533,4 @@ void ExpiredZoomDoesNotBlockEnable() {
     runtime.Stop(); VERIFY(Wait([&] { return runtime.Finished(); })); service.Stop();
 }
 }
-int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); FullscreenRuntime(); FullscreenService(); RecoveryDoesNotBlockUpdateDownload(); total += checks; return failures; }
+int RunProductRuntimeTests(int& total) { Runtime(); PermanentCleanupFailure(); DeadlineWakesWithoutMoreInput(); ZoomBoundaryDoesNotFaultRuntime(); SavingDoesNotResumePausedInput(); Startup(); Service(); ZoomOnlyService(); OptionalCapabilities(); ExpiredZoomDoesNotBlockEnable(); FullscreenRuntime(); FullscreenService(); SessionSwitchRuntime(); InputAccessFailureWithoutSessionSwitch(); RecoveryDoesNotBlockUpdateDownload(); total += checks; return failures; }

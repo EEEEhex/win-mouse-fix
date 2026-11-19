@@ -59,6 +59,7 @@ private:
     std::uint32_t Modifiers() const noexcept;
     std::uint32_t HeldButtons() const noexcept;
     bool DesktopActive() const noexcept;
+    void EndDesktop(std::uint64_t now) noexcept;
     bool Bound(Button,std::uint32_t) const noexcept;
     bool WheelEligible(std::int64_t) const noexcept;
     bool ProductHook(WPARAM,const MSLLHOOKSTRUCT&) noexcept;

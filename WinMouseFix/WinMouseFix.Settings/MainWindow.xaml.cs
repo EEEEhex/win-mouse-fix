@@ -337,7 +337,10 @@ public sealed partial class MainWindow : Window
         else if (Model.Status.Storage.NativeError != 0) { ConnectionBar.Message = UiText.Get("无法开始迁移，请检查目录权限后重试。"); ConnectionBar.Severity = InfoBarSeverity.Warning; ConnectionBar.IsOpen = true; }
         if (_enabled is not null) { _enabled.IsOn = Model.Status.Requested; _enabled.IsEnabled = Model.Connected && !_closing && !Model.Status.Storage.Switching && !UpdateBusy; }
         if (_runtime is not null) _runtime.Text = Model.Status.State switch { "enabled" => UiText.Get("后台已启用"), "starting" => UiText.Get("正在启动输入引擎…"), "faulted" => UiText.Format("后台发生错误，已停止接管。错误 {0}，清理 {1}",Model.Status.Failure.NativeError,Model.Status.Failure.CleanupError), "stopping" => UiText.Get("正在退出，请松开仍按住的侧键。"), _ => UiText.Get("后台已暂停，普通输入保持原样。") };
-        if (_runtime is not null && Model.Status.Requested && Model.Status.FullscreenPaused && Model.Status.State == "paused") _runtime.Text = UiText.Get("检测到全屏应用，鼠标增强已自动暂停。");
+        if (_runtime is not null && Model.Status.Requested && Model.Status.State == "paused") {
+            if (Model.Status.SessionPaused) _runtime.Text = UiText.Get("当前 Windows 会话暂不可接管鼠标，增强已自动暂停。");
+            else if (Model.Status.FullscreenPaused) _runtime.Text = UiText.Get("检测到全屏应用，鼠标增强已自动暂停。");
+        }
         if (_runtime is not null && Model.Connected && Model.Committed.Bindings.Any(b => b.Action == "native-zoom") &&
             Model.Status.Capabilities.Any(c => c.Name == "zoom" && c.State == "unavailable"))
             _runtime.Text += "\n" + UiText.Get("当前系统缺少原生缩放所需的触控板接口。");

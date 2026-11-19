@@ -23,6 +23,15 @@ namespace {
 constexpr UINT OpenSettingsMessage = WM_APP+20, ExitMessage = WM_APP+21, SwitchDataMessage = WM_APP+22, FullscreenMessage = WM_APP+23;
 constexpr int SettingsId = 101,ExitId = 102,ToggleId = 103,StartupId = 104;
 constexpr wchar_t ClassName[] = L"WinMouseFix.Resident.v1";
+template<class T>
+bool QuerySession(DWORD session,WTS_INFO_CLASS info,T& value) noexcept {
+    LPWSTR buffer{}; DWORD size{};
+    if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE,session,info,&buffer,&size)) return false;
+    const bool valid = buffer && size >= sizeof(value);
+    if (valid) value = *reinterpret_cast<const T*>(buffer);
+    WTSFreeMemory(buffer);
+    return valid;
+}
 struct Options { bool settings{},startup{},smoke{},trace{}; std::filesystem::path output,updateTrial; std::wstring simulationTag; unsigned smokeHoldMs{}; DWORD restartAfter{},restartSettings{}; bool migrate{}; DataLocation migrationFrom{},migrationTo{}; };
 struct Resident {
     HINSTANCE instance{}; HWND window{},settingsWindow{}; DWORD settingsPid{};
@@ -32,7 +41,7 @@ struct Resident {
     FullscreenPause fullscreen;
     std::atomic<bool> fullscreenDetected{};
     unsigned adds{},deletes{},icons{},destroyedIcons{},settingsOpened{},step{},startupNotifications{};
-    bool trayPresent{},firstPaused{},rebuildPreserved{};
+    bool trayPresent{},firstPaused{},rebuildPreserved{},sessionResumed{},sessionBlocked{};
     std::atomic<bool> closing{};
     UINT taskbarCreated{};
     std::mutex settingsMutex;
@@ -113,9 +122,26 @@ struct Resident {
     }
     std::wstring Tip() const {
         if (!runtime) return L"WinMouseFix — 正在准备";
+        if (runtime->Requested() && runtime->SessionPaused() && runtime->State()==ProductRuntimeState::Paused) return L"WinMouseFix — Windows 会话中暂时暂停增强";
         if (runtime->Requested() && runtime->FullscreenPaused() && runtime->State()==ProductRuntimeState::Paused) return L"WinMouseFix — 全屏应用中，增强已自动暂停";
         constexpr const wchar_t* states[]{L"已暂停",L"正在启动",L"已启用",L"发生错误，已暂停",L"正在退出",L"已停止"};
         return L"WinMouseFix — "+std::wstring(states[static_cast<unsigned>(runtime->State())]);
+    }
+    void RefreshSession(bool changed = false) {
+        bool available = !sessionBlocked;
+        bool remote{};
+        if (!options.smoke && (!changed || available)) {
+            WTS_CONNECTSTATE_CLASS connection{};
+            available = (!QuerySession(environment.session,WTSConnectState,connection) || connection == WTSActive) && ProductInputDesktopActive();
+            if (available && runtime->SessionPaused()) {
+                USHORT protocol{};
+                remote = QuerySession(environment.session,WTSClientProtocolType,protocol) ? protocol != 0 : GetSystemMetrics(SM_REMOTESESSION) != 0;
+            }
+        }
+        const bool wasPaused = runtime->SessionPaused();
+        runtime->RefreshInputSession(available,changed,remote);
+        if (wasPaused != runtime->SessionPaused() && log)
+            log->Record("input-session-pause",wasPaused ? "released" : "entered");
     }
     void RefreshFullscreen() {
         if (!runtime || !store || options.smoke) return;
@@ -155,6 +181,7 @@ struct Resident {
     }
     void Tick() {
         if (!runtime || !service) return;
+        RefreshSession();
         RefreshFullscreen();
         service->Tick();
         if (!options.updateTrial.empty()) {
@@ -198,8 +225,13 @@ struct Resident {
                 simulation.scripted = true; PostMessageW(window,WM_COMMAND,ToggleId,0); step = 1;
             } else if (step == 1 && simulation.completions && runtime->State() == ProductRuntimeState::Enabled) {
                 const auto captures = simulation.captures.load(); trayPresent = false; RefreshTray(true); rebuildPreserved = simulation.captures == captures;
-                PostMessageW(window,WM_WTSSESSION_CHANGE,WTS_SESSION_LOCK,0); OpenSettings(); step = 2;
-            } else if (step == 2 && simulation.destroyed && runtime->State() == ProductRuntimeState::Paused && GetTickCount64()-started >= options.smokeHoldMs) PostMessageW(window,WM_CLOSE,0,0);
+                PostMessageW(window,WM_WTSSESSION_CHANGE,WTS_REMOTE_DISCONNECT,environment.session); OpenSettings(); step = 2;
+            } else if (step == 2 && simulation.destroyed == 1 && runtime->SessionPaused() && runtime->Requested()) {
+                PostMessageW(window,WM_WTSSESSION_CHANGE,WTS_CONSOLE_CONNECT,environment.session); step = 3;
+            } else if (step == 3 && simulation.captures == 2 && runtime->State() == ProductRuntimeState::Enabled) {
+                sessionResumed = runtime->Requested() && store->Current()->config.enabled;
+                if (GetTickCount64()-started >= options.smokeHoldMs) PostMessageW(window,WM_CLOSE,0,0);
+            }
             if (GetTickCount64()-started > 10000) PostMessageW(window,WM_CLOSE,0,0);
         }
         if (service->ExitRequested()) closing = true;
@@ -228,7 +260,15 @@ struct Resident {
             if (message == WM_COMMAND) {
                 switch (LOWORD(a)) { case SettingsId: state->OpenSettings(); break; case ExitId: PostMessageW(window,WM_CLOSE,0,0); break; case ToggleId: state->Enable(state->service && state->service->Recording() ? false : !state->runtime->Requested()); break; case StartupId: state->ToggleStartup(); break; } return 0;
             }
-            if (message == WM_WTSSESSION_CHANGE && a == WTS_SESSION_LOCK) { state->Enable(false); return 0; }
+            if (message == WM_WTSSESSION_CHANGE && state->runtime && static_cast<DWORD>(b) == state->environment.session) {
+                switch (a) {
+                case WTS_SESSION_LOCK: case WTS_CONSOLE_DISCONNECT: case WTS_REMOTE_DISCONNECT:
+                    state->sessionBlocked = true; state->RefreshSession(true); break;
+                case WTS_SESSION_UNLOCK: case WTS_CONSOLE_CONNECT: case WTS_REMOTE_CONNECT:
+                    state->sessionBlocked = false; state->RefreshSession(true); break;
+                }
+                return 0;
+            }
             if (message == WM_TIMER) { state->Tick(); return 0; }
             if ((message == WM_DPICHANGED || message == WM_SETTINGCHANGE || message == WM_DISPLAYCHANGE) && state->tray) { state->RefreshFullscreen(); state->lastTip.clear(); state->RefreshTray(); }
             if (message == WM_DESTROY) { state->fullscreenMonitor.Stop(); KillTimer(window,1); if (state->tray) state->tray->Remove(); if (state->controls) state->controls->Release(); PostQuitMessage(0); return 0; }
@@ -286,7 +326,7 @@ int RunResident(HINSTANCE instance,const Options& options) {
     state.taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     if (options.smoke) state.controls = std::make_unique<ContentControls>([](HWND,DWORD)->BOOL{return TRUE;},[](HWND)->BOOL{return TRUE;});
     else state.controls = std::make_unique<ContentControls>();
-    if (!state.controls->Acquire(state.window)) throw std::runtime_error("无法注册会话锁定通知；输入未启用。");
+    if (!state.controls->Acquire(state.window)) throw std::runtime_error("无法注册 Windows 会话通知，输入未启用。");
     auto trayApi = RealTrayApi();
     if (options.smoke) {
         trayApi = {&state,
@@ -301,7 +341,8 @@ int RunResident(HINSTANCE instance,const Options& options) {
     if (!options.updateTrial.empty() && (!queried || configuration->recoveryRequired)) throw std::runtime_error("Updated Host did not pass configuration/module health checks");
     state.evidence = std::make_unique<CapabilityEvidence>(environment,nativeCaps);
     const auto captureFlags = queried ? ReleasedCaptureFlags(nativeCaps) : 0;
-    const auto runtimeApi = options.smoke ? state.simulation.RuntimeApi() : ProductRuntimeApi{};
+    auto runtimeApi = options.smoke ? state.simulation.RuntimeApi() : ProductRuntimeApi{};
+    runtimeApi.monitorInputSession = true;
     state.runtime = std::make_unique<ProductRuntime>(environment,configuration->config.input,false,runtimeApi,captureFlags);
     state.startup = std::make_unique<StartupRegistration>(environment,environment.executableDirectory/L"WinMouseFix.Host.exe",options.smoke ? state.simulation.Startup() : RealStartupApi());
     state.log = std::make_unique<ProductLog>(environment.dataDirectory/L"logs",*state.runtime,configuration->config.input.qpcFrequency,options.smoke);
@@ -331,6 +372,7 @@ int RunResident(HINSTANCE instance,const Options& options) {
     state.service = std::make_unique<ProductService>(environment,*state.store,*state.runtime,*state.startup,api);
     if (!state.service->Start()) throw std::runtime_error("Cannot start local settings control pipe");
     if (!options.smoke) {
+        state.RefreshSession();
         if (!state.fullscreenMonitor.Start(state.window,FullscreenMessage)) state.log->Record("fullscreen-monitor","Window event subscription incomplete; maintenance sampling remains active");
         state.RefreshFullscreen();
     }
@@ -356,9 +398,10 @@ int RunResident(HINSTANCE instance,const Options& options) {
     }
     if (options.smoke) {
         const auto expectedNotices = configuration->config.startupNotification && !configuration->recoveryRequired ? 1u : 0u;
-        std::filesystem::create_directories(options.output); const bool ok = state.firstPaused && state.rebuildPreserved && state.adds == 2 && state.icons == state.destroyedIcons && state.settingsOpened >= 1 && state.runtime->Finished() && static_cast<bool>(state.runtime->Failure()) && state.startupNotifications == expectedNotices;
+        std::filesystem::create_directories(options.output); const bool ok = state.firstPaused && state.rebuildPreserved && state.sessionResumed && state.adds == 2 && state.icons == state.destroyedIcons && state.settingsOpened >= 1 && state.runtime->Finished() && static_cast<bool>(state.runtime->Failure()) && state.startupNotifications == expectedNotices;
         std::ofstream out(options.output/L"report.json"); out << "{\"simulation\":true,\"ok\":" << (ok ? "true" : "false") << ",\"firstPaused\":" << (state.firstPaused ? "true" : "false")
             << ",\"trayRecreatedWithoutEngineRestart\":" << (state.rebuildPreserved ? "true" : "false") << ",\"iconHandlesBalanced\":" << (state.icons == state.destroyedIcons ? "true" : "false")
+            << ",\"sessionResumed\":" << (state.sessionResumed ? "true" : "false")
             << ",\"fakeFrames\":" << state.simulation.frames << ",\"captures\":" << state.simulation.captures << ",\"settingsActivations\":" << state.settingsOpened << ",\"startupNotificationRequests\":" << state.startupNotifications << ",\"realCapture\":false,\"desktopInjection\":false,\"realStartupRegistry\":false}";
         return ok ? 0 : 1;
     }

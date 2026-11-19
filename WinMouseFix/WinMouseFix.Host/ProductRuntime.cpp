@@ -5,6 +5,8 @@
 
 namespace wmf::host {
 namespace {
+constexpr std::uint64_t SessionSettleMs = 500;
+constexpr std::uint64_t SessionNotificationGraceMs = 1500;
 std::uint64_t Clock() noexcept { LARGE_INTEGER q{}; QueryPerformanceCounter(&q); return static_cast<std::uint64_t>(q.QuadPart); }
 ProductRuntimeApi GuardEnvironment(const ProductEnvironment& environment,ProductRuntimeApi api) {
     if (api.simulation && !environment.simulation) throw std::invalid_argument("Fake product backend requires an isolated environment");
@@ -84,9 +86,49 @@ void ProductRuntime::Enable(bool enabled) noexcept {
 void ProductRuntime::SetFullscreenPaused(bool paused) noexcept {
     std::lock_guard lock(controlMutex_);
     if (fullscreenPaused_.exchange(paused)==paused) return;
-    ++generation_; cancel_=true; captureCancel_=true;
     if (paused) { recording_=false; recordingDirty_=true; }
+    InvalidateInput();
+}
+void ProductRuntime::InvalidateInput() noexcept {
+    ++generation_; cancel_=true; captureCancel_=true;
     SetEvent(workerWake_); SetEvent(captureWake_);
+}
+void ProductRuntime::RefreshInputSession(bool available,bool changed,bool remote) noexcept {
+    std::lock_guard lock(controlMutex_);
+    if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0 || !Failure()) return;
+    const auto now = GetTickCount64();
+    if (changed || !available) {
+        if (changed || !sessionTransition_) {
+            // Revoke ownership of button presses whose releases may go to another desktop.
+            sessionTransition_ = true; pendingSessionFailure_ = {};
+            retireSessionCapture_ = true; ++sessionPauseId_; sessionPaused_ = true;
+            recording_ = false; recordingDirty_ = true; InvalidateInput();
+        }
+        sessionResumeAfter_ = now+SessionSettleMs;
+        return;
+    }
+    if (sessionTransition_ && now >= sessionResumeAfter_ && captureSessionAck_ == sessionPauseId_) {
+        sessionTransition_ = false; sessionPaused_ = false; InvalidateInput();
+    } else if (!sessionTransition_ && !pendingSessionFailure_ && now >= sessionFailureDeadline_ && !remote) {
+        Fault(pendingSessionFailure_); pendingSessionFailure_ = {}; sessionPaused_ = false;
+    }
+}
+void ProductRuntime::InputFailure(Result result) noexcept {
+    // Windows may revoke access before the WTS notification reaches the Host.
+    // Quiesce during that gap. Unrelated local failures still fail closed.
+    if (api_.monitorInputSession && result.code == Status::NativeFailure && result.nativeError == ERROR_ACCESS_DENIED &&
+        (!result.cleanupError || result.cleanupError == ERROR_ACCESS_DENIED)) {
+        std::lock_guard lock(controlMutex_);
+        if (Failure() && WaitForSingleObject(stop_,0) != WAIT_OBJECT_0) {
+            if (!sessionPaused_) {
+                pendingSessionFailure_ = result; sessionFailureDeadline_ = GetTickCount64()+SessionNotificationGraceMs;
+                ++sessionPauseId_; sessionPaused_ = true;
+                recording_ = false; recordingDirty_ = true; InvalidateInput();
+            }
+            return;
+        }
+    }
+    Fault(result);
 }
 bool ProductRuntime::ApplySavedEnabled(bool enabled,std::uint64_t expected) noexcept {
     std::lock_guard lock(controlMutex_);
@@ -102,7 +144,7 @@ void ProductRuntime::SetEnabled(bool enabled) noexcept {
 }
 void ProductRuntime::Record(bool enabled) noexcept {
     std::lock_guard lock(controlMutex_); ++controlEpoch_;
-    if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0 || !Failure() || (enabled && fullscreenPaused_)) return;
+    if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0 || !Failure() || (enabled && (fullscreenPaused_ || sessionPaused_))) return;
     recording_ = enabled; recordingDirty_ = true;
     cancel_ = true; captureCancel_ = true; ++generation_; SetEvent(workerWake_); SetEvent(captureWake_);
 }
@@ -133,7 +175,7 @@ ProductRuntimeState ProductRuntime::State() const noexcept {
     if (Finished()) return ProductRuntimeState::Stopped;
     if (WaitForSingleObject(stop_,0) == WAIT_OBJECT_0) return ProductRuntimeState::Stopping;
     if (!Failure()) return ProductRuntimeState::Faulted;
-    if (!requested_ || fullscreenPaused_) return ProductRuntimeState::Paused;
+    if (!requested_ || fullscreenPaused_ || sessionPaused_) return ProductRuntimeState::Paused;
     return workerReady_ && captureReady_ && readyGeneration_ == generation_ ? ProductRuntimeState::Enabled : ProductRuntimeState::Starting;
 }
 CaptureStats ProductRuntime::Stats() const noexcept { std::lock_guard lock(statsMutex_); return captureStats_; }
@@ -170,19 +212,22 @@ void ProductRuntime::Worker() noexcept {
         std::uint64_t handledGeneration{};
         const HANDLE waits[]{stop_,workerWake_,deadlineTimer_};
         while (WaitForSingleObject(stop_,0) != WAIT_OBJECT_0) {
-            const auto generation = generation_.load(); const bool run = Running();
+            const auto generation = generation_.load();
+            const auto sessionPause = sessionPaused_ ? sessionPauseId_.load() : 0;
+            const bool run = !sessionPause && Running();
             if (cancel_.exchange(false) || !run || handledGeneration != generation) {
                 InputEvent discarded; while (input_.Pop(discarded)) processed_ += discarded.samples;
-                const auto result = engine.Cancel(CancelReason::Pause); if (!result) Fault(result);
-                if (!run) { const auto closed = engine.Close(); if (!closed) Fault(closed); }
+                const auto result = engine.Cancel(CancelReason::Pause); if (!result) InputFailure(result);
+                if (!run) { const auto closed = engine.Close(); if (!closed) InputFailure(closed); }
+                if (sessionPause) workerSessionAck_ = sessionPause;
                 workerReady_ = false; workerPaused_ = true; activeRevision_ = 0; handledGeneration = generation; SetEvent(captureWake_);
             }
-            if (run && Failure() && !engine.Ready()) {
+            if (run && Running() && Failure() && !engine.Ready()) {
                 workerPaused_ = false; const auto snapshot = Current();
                 auto result = engine.Configure(*snapshot); if (result) result = engine.Initialize();
-                if (!result) Fault(result);
+                if (!result) InputFailure(result);
             }
-            if (run && Failure() && engine.Ready()) {
+            if (run && Running() && Failure() && engine.Ready()) {
                 workerPaused_ = false; readyGeneration_ = handledGeneration;
                 if (!workerReady_.exchange(true)) SetEvent(captureWake_);
                 InputEvent event;
@@ -202,11 +247,11 @@ void ProductRuntime::Worker() noexcept {
                     }
                     if ((event.flags & RecordedInput) && event.kind == InputKind::Down && !recorded_.Push(event)) result = {Status::Busy,ERROR_BUFFER_OVERFLOW};
                     activeRevision_ = engine.Pressed() || engine.Deadline() ? engine.Revision() : 0;
-                    processed_ += event.samples; if (!result) { Fault(result); break; }
+                    processed_ += event.samples; if (!result) { InputFailure(result); break; }
                 }
                 const auto deadline = engine.Deadline();
                 if (deadline && Clock() >= deadline && !cancel_) {
-                    const auto result = engine.Tick(Clock()); if (!result) Fault(result);
+                    const auto result = engine.Tick(Clock()); if (!result) InputFailure(result);
                     activeRevision_ = engine.Pressed() || engine.Deadline() ? engine.Revision() : 0;
                 }
             }
@@ -239,7 +284,8 @@ void ProductRuntime::Capture() noexcept {
         std::vector<std::shared_ptr<const BindingConfig>> retained;
         for (;;) {
             const bool stopping = WaitForSingleObject(stop_,0) == WAIT_OBJECT_0;
-            const bool run = !stopping && Running() && Failure();
+            const auto sessionPause = sessionPaused_ ? sessionPauseId_.load() : 0;
+            const bool run = !stopping && !sessionPause && Running() && Failure();
             if (!handle && run && workerReady_ && readyGeneration_ == generation_) {
                 posted = Current(); retained.push_back(posted);
                 ProductCaptureConfig config; config.context = this; config.sink = &ProductRuntime::Receive; config.bindings = *posted; config.flags = flags_;
@@ -250,10 +296,14 @@ void ProductRuntime::Capture() noexcept {
                     config.flags |= WheelSourceValidated; config.bindings.wheelMode = WheelMode::Off;
                 }
                 const auto result = api_.createCapture(&config,&handle); capture_ = handle;
-                if (!result) Fault(result); else captureReady_ = true;
+                if (!result) InputFailure(result); else captureReady_ = true;
                 lastEnabled = lastRecording = false; recordingDirty_ = true;
             }
+            const bool retire = retireSessionCapture_.exchange(false);
             if (handle) {
+                if (retire) {
+                    const auto result = api_.post(handle,CaptureCommand::EndSession,0); if (!result) Fault(result);
+                }
                 if (captureCancel_.exchange(false)) {
                     const auto result = api_.post(handle,CaptureCommand::Disable,0); if (!result) Fault(result); lastEnabled = false;
                 }
@@ -296,6 +346,7 @@ void ProductRuntime::Capture() noexcept {
                     } else cleanupFailedSince = 0; // A real owned press still needs its physical release.
                 }
             }
+            if (!handle && sessionPause && workerSessionAck_ == sessionPause) captureSessionAck_ = sessionPause;
             if (stopping && workerDone_ && !handle) break;
             const DWORD timeout = stopping ? 10 : handle ? 100 : INFINITE;
             const auto waited = stopping ? MsgWaitForMultipleObjectsEx(0,nullptr,timeout,QS_ALLINPUT,MWMO_INPUTAVAILABLE) :

@@ -41,7 +41,7 @@ struct CaptureConfig {
     CaptureSink sink{};
     std::uint32_t confirmationTimeoutMs{100}, reserved{};
 };
-enum class CaptureCommand : std::uint32_t { Enable, Disable, CompleteDrag, CompleteClick, Cancel };
+enum class CaptureCommand : std::uint32_t { Enable, Disable, CompleteDrag, CompleteClick, Cancel, EndSession };
 struct CaptureStats {
     std::uint32_t size{sizeof(CaptureStats)}, version{AbiVersion};
     std::uint64_t rawPackets{}, rawMoves{}, blockedMoves{}, capturedDowns{},

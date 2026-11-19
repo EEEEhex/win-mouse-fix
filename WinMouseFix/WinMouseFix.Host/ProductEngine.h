@@ -38,6 +38,7 @@ struct ProductFunctions {
     void (*complete)(void*,std::uint64_t,bool canceled) noexcept{};
     void (*trace)(void*,const ProductTrace&) noexcept{};
 };
+bool ProductInputDesktopActive() noexcept;
 bool ProductTargetValid(const InputEvent&,TargetPolicy,bool anchor) noexcept;
 class ProductEngine {
 public:

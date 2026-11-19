@@ -9,18 +9,20 @@ void Preserve(Result& first,Result cleanup) noexcept {
     else if (!first.cleanupError) first.cleanupError = cleanup.nativeError ? cleanup.nativeError : cleanup.cleanupError ? cleanup.cleanupError : ERROR_GEN_FAILURE;
 }
 }
+bool ProductInputDesktopActive() noexcept {
+    const auto desktop = OpenInputDesktop(0,FALSE,DESKTOP_READOBJECTS);
+    if (!desktop) return false;
+    wchar_t inputName[256]{},ownName[256]{}; DWORD bytes{};
+    const bool active = GetUserObjectInformationW(desktop,UOI_NAME,inputName,sizeof(inputName),&bytes) &&
+        GetUserObjectInformationW(GetThreadDesktop(GetCurrentThreadId()),UOI_NAME,ownName,sizeof(ownName),&bytes) && wcscmp(inputName,ownName) == 0;
+    CloseDesktop(desktop);
+    return active;
+}
 bool ProductTargetValid(const InputEvent& input,TargetPolicy policy,bool anchor) noexcept {
     if (policy == TargetPolicy::Application) {
         const auto target = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(input.target));
         if (!target || !IsWindow(target) || GetForegroundWindow() != target) return false;
-    } else {
-        const auto desktop = OpenInputDesktop(0,FALSE,DESKTOP_READOBJECTS);
-        if (!desktop) return false;
-        wchar_t inputName[256]{},ownName[256]{}; DWORD bytes{};
-        const bool valid = GetUserObjectInformationW(desktop,UOI_NAME,inputName,sizeof(inputName),&bytes) &&
-            GetUserObjectInformationW(GetThreadDesktop(GetCurrentThreadId()),UOI_NAME,ownName,sizeof(ownName),&bytes) && wcscmp(inputName,ownName) == 0;
-        CloseDesktop(desktop); if (!valid) return false;
-    }
+    } else if (!ProductInputDesktopActive()) return false;
     POINT cursor{};
     return !anchor || (GetCursorPos(&cursor) && cursor.x == input.anchorX && cursor.y == input.anchorY);
 }

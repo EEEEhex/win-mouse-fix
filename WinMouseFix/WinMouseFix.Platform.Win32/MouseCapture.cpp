@@ -169,7 +169,7 @@ Result MouseCapture::Close() noexcept {
     return {};
 }
 Result MouseCapture::Post(CaptureCommand command,std::uint64_t session) noexcept {
-    if (!window_ || command > CaptureCommand::Cancel) return {Status::InvalidState};
+    if (!window_ || command > (product_ ? CaptureCommand::EndSession : CaptureCommand::Cancel)) return {Status::InvalidState};
     const auto post = api_.post ? api_.post : PostMessageAdapter;
     return post(api_.context,window_,CommandMessage,static_cast<WPARAM>(command),static_cast<LPARAM>(session)) ?
         Result{} : Result{Status::NativeFailure,GetLastError()};
@@ -177,6 +177,7 @@ Result MouseCapture::Post(CaptureCommand command,std::uint64_t session) noexcept
 void MouseCapture::Command(CaptureCommand command,std::uint64_t session) noexcept {
     const auto now = Now();
     if (product_) {
+        if (command == CaptureCommand::EndSession) { EndDesktop(now); return; }
         if (command == CaptureCommand::Enable) {
             generation_ = session ? session : 1;
             ApplyPendingBindings(); desktopActive_ = DesktopActive();
@@ -197,6 +198,7 @@ void MouseCapture::Command(CaptureCommand command,std::uint64_t session) noexcep
     case CaptureCommand::CompleteDrag: gate_.Complete(session,false,now); break;
     case CaptureCommand::CompleteClick: gate_.Complete(session,true,now); break;
     case CaptureCommand::Cancel: if (!session || session == gate_.Session()) gate_.Cancel(CancelReason::NativeError,now); break;
+    case CaptureCommand::EndSession: break;
     }
 }
 Result MouseCapture::UpdateBindings(const BindingConfig& value) noexcept {
@@ -482,16 +484,18 @@ void MouseCapture::Tick() noexcept {
             if (!active || target.window != ordinaryTarget_.window || target.x != ordinaryTarget_.x || target.y != ordinaryTarget_.y)
                 CancelWheel(CancelReason::TargetChanged,Now());
         }
-        if (!active && desktopActive_) {
-            if (gate_.Owned()) retiredButtons_ |= ButtonBit(selected_);
-            gate_.DesktopEnded(Now()); currentSession_ = 0; passedButtons_ = 0;
-        }
+        if (!active && desktopActive_) EndDesktop(Now());
         desktopActive_ = active;
     }
     // A swallowed XBUTTONDOWN is not reflected reliably in Win32 async key
     // state. Only actual hook/raw button boundaries may end a captured press.
     gate_.Tick(Now(),!gate_.Owned() || ValidTarget(gate_.Target()));
     if (product_ && !gate_.Owned()) currentSession_ = 0;
+}
+void MouseCapture::EndDesktop(std::uint64_t now) noexcept {
+    CancelWheel(CancelReason::Pause,now);
+    if (gate_.Owned()) retiredButtons_ |= ButtonBit(selected_);
+    gate_.DesktopEnded(now); currentSession_ = 0; passedButtons_ = 0;
 }
 Result MouseCapture::Replay() noexcept {
     return ReplayButtons(api_);
