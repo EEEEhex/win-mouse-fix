@@ -115,7 +115,7 @@ struct NativeFixture {
     UINT sent{2}; bool failCleanup{};
     CaptureTarget target{9,-1920,120};
     std::uint32_t modifiers{},held{};
-    bool desktop{true},valid{true},allowDesktop{true},anchorMatches{true}; int keyboards{};
+    bool desktop{true},valid{true},allowDesktop{true},anchorMatches{true},remote{}; int keyboards{};
     CaptureNative Api() {
         return {this,
             [](void* p,void*) -> HWND { auto& f = *static_cast<NativeFixture*>(p); ++f.created; return ++f.stage == f.failAt ? nullptr : reinterpret_cast<HWND>(1); },
@@ -145,6 +145,7 @@ struct NativeFixture {
         api.heldButtons = [](void* p) { return static_cast<NativeFixture*>(p)->held; };
         api.desktopActive = [](void* p) { return static_cast<NativeFixture*>(p)->desktop; };
         api.post = [](void*,HWND,UINT,WPARAM,LPARAM) -> BOOL { return TRUE; };
+        api.remoteSession = [](void* p) { return static_cast<NativeFixture*>(p)->remote; };
         return api;
     }
 };
@@ -297,6 +298,108 @@ void ProductGenerationsAndRemoval() {
     c.Command(CaptureCommand::CompleteDrag,first); VERIFY(!c.Hook(WM_MOUSEMOVE,back));
     f.Raw(c,RI_MOUSE_BUTTON_4_UP); VERIFY(c.Hook(WM_XBUTTONUP,back)); f.Complete(c); VERIFY(c.Close());
 }
+void RemoteClicks() {
+    for (const auto button : {Button::Back,Button::Forward}) {
+        ProductFixture f; f.native.remote = true;
+        MouseCapture capture(f.config,f.native.ProductApi()); VERIFY(capture.Open());
+        capture.Command(CaptureCommand::Enable,17);
+        BindingHandle bindings{}; VERIFY(WmfBindingsCreate(&f.config.bindings,&bindings));
+        const auto data = f.HookData(button);
+        for (unsigned click = 0; click < 2; ++click) {
+            const auto first = f.events.size();
+            VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+            VERIFY(capture.Hook(WM_XBUTTONDOWN,data)); // Duplicate Hook Down cannot create another press.
+            capture.Tick();
+            VERIFY(f.events.size() == first+1 && f.events.back().kind == InputKind::Down);
+            VERIFY(capture.Hook(WM_XBUTTONUP,data));
+            VERIFY(f.events.size() == first+2 && f.events.back().kind == InputKind::Up);
+            unsigned actions{};
+            for (auto i = first; i < f.events.size(); ++i) {
+                VERIFY(f.events[i].device && f.events[i].generation == 17);
+                BindingDecision decision; VERIFY(WmfBindingsFeed(bindings,&f.events[i],&decision));
+                if (decision.effects & DecisionExecute) {
+                    ++actions;
+                    VERIFY(decision.action == (button == Button::Back ? Action::Back : Action::Forward));
+                }
+            }
+            VERIFY(actions == 1);
+            f.Complete(capture);
+            VERIFY(!capture.Hook(WM_XBUTTONUP,data));
+        }
+        VERIFY(WmfBindingsDestroy(&bindings)); VERIFY(capture.Close());
+        VERIFY(f.native.sendCalls == 0);
+    }
+}
+void RemoteMovementAndRawDuplicates() {
+    for (const auto button : {Button::Back,Button::Forward}) {
+        ProductFixture f; f.native.remote = true;
+        MouseCapture capture(f.config,f.native.ProductApi()); VERIFY(capture.Open());
+        capture.Command(CaptureCommand::Enable,3);
+        auto data = f.HookData(button); data.pt = {-1920,120};
+        VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+        data.pt.x += 20; data.pt.y -= 40;
+        VERIFY(!capture.Hook(WM_MOUSEMOVE,data));
+        VERIFY(f.events.size() == 2 && f.events.back().dx == 20 && f.events.back().dy == -40);
+        // Remote mice may also send null-device or absolute Raw Input. All
+        // movement and button boundaries already have one owner in this session.
+        f.Raw(capture,RI_MOUSE_BUTTON_4_DOWN,60000,40000,0,0);
+        RAWINPUT absolute{}; absolute.header.dwType = RIM_TYPEMOUSE;
+        absolute.header.hDevice = reinterpret_cast<HANDLE>(7);
+        absolute.data.mouse.usFlags = MOUSE_MOVE_ABSOLUTE;
+        absolute.data.mouse.usButtonFlags = RI_MOUSE_BUTTON_4_DOWN;
+        absolute.data.mouse.lLastX = 60000; absolute.data.mouse.lLastY = 40000;
+        capture.Raw(absolute); VERIFY(f.events.size() == 2);
+        VERIFY(capture.Hook(WM_XBUTTONUP,data)); VERIFY(f.events.size() == 3);
+        BindingHandle bindings{}; VERIFY(WmfBindingsCreate(&f.config.bindings,&bindings));
+        unsigned frames{},clicks{};
+        for (const auto& event : f.events) {
+            BindingDecision decision; VERIFY(WmfBindingsFeed(bindings,&event,&decision));
+            frames += decision.frameCount;
+            if (decision.effects & DecisionExecute) ++clicks;
+        }
+        VERIFY(frames >= 3 && clicks == 0);
+        VERIFY(WmfBindingsDestroy(&bindings)); f.Complete(capture); VERIFY(capture.Close());
+    }
+}
+void RemoteWheelAndCancellation() {
+    ProductFixture f; f.native.remote = true; f.config.flags = ExplicitValidationProbe;
+    f.config.bindings.wheelMode = WheelMode::High;
+    auto& bindings = f.config.bindings;
+    bindings.bindings[bindings.bindingCount++] = {5,Button::Back,Trigger::Wheel,0,Action::NativeZoom};
+    MouseCapture capture(f.config,f.native.ProductApi()); VERIFY(capture.Open());
+    capture.Command(CaptureCommand::Enable,8);
+    auto data = f.HookData(); VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+    for (const auto delta : {SHORT{120},SHORT{-120}}) {
+        auto wheel = data; wheel.mouseData = static_cast<ULONG>(static_cast<USHORT>(delta))<<16;
+        const auto before = f.events.size();
+        VERIFY(capture.Hook(WM_MOUSEWHEEL,wheel));
+        VERIFY(f.events.size() == before+1 && f.events.back().kind == InputKind::Wheel && f.events.back().wheelY == delta);
+        f.Raw(capture,RI_MOUSE_WHEEL,0,0,delta); VERIFY(f.events.size() == before+1);
+        wheel.flags = LLMHF_INJECTED; VERIFY(!capture.Hook(WM_MOUSEWHEEL,wheel));
+        VERIFY(f.events.size() == before+1);
+    }
+    VERIFY(capture.Hook(WM_XBUTTONUP,data)); f.Complete(capture);
+    for (const auto kind : {WM_MOUSEWHEEL,WM_MOUSEHWHEEL}) {
+        auto wheel = data; wheel.mouseData = 120u<<16;
+        const auto before = f.events.size();
+        VERIFY(capture.Hook(kind,wheel));
+        VERIFY(f.events.size() == before+1 && f.events.back().button == Button::None && f.events.back().generation == 8);
+        VERIFY(f.events.back().wheelX == (kind == WM_MOUSEHWHEEL ? 120 : 0));
+        VERIFY(f.events.back().wheelY == (kind == WM_MOUSEWHEEL ? 120 : 0));
+        f.Raw(capture,kind == WM_MOUSEWHEEL ? RI_MOUSE_WHEEL : RI_MOUSE_HWHEEL,0,0,120);
+        VERIFY(f.events.size() == before+1);
+    }
+    VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+    RAWINPUT keyboard{}; keyboard.header.dwType = RIM_TYPEKEYBOARD; keyboard.data.keyboard.VKey = 'A';
+    capture.Raw(keyboard); VERIFY(f.events.back().kind == InputKind::Cancel && capture.Stats().keyboardTakeovers == 1);
+    VERIFY(capture.Hook(WM_XBUTTONUP,data));
+    VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+    capture.Command(CaptureCommand::Disable,0); VERIFY(f.events.back().kind == InputKind::Cancel);
+    VERIFY(capture.Close().code == Status::Busy); VERIFY(capture.Hook(WM_XBUTTONUP,data));
+    capture.Command(CaptureCommand::Enable,9); VERIFY(capture.Hook(WM_XBUTTONDOWN,data));
+    capture.Command(CaptureCommand::EndSession,0);
+    VERIFY(capture.Hook(WM_XBUTTONUP,data)); VERIFY(capture.Close());
+}
 void ResourcesAndReplay() {
     CaptureConfig config; config.sink = [](void*,const MouseInput*) noexcept { return true; };
     for (int fail = 1; fail <= 4; ++fail) {
@@ -333,5 +436,6 @@ void ResourcesAndReplay() {
 int RunCaptureTests(int& total) {
     OrderedAndReordered(); CancellationAndOwnership(); HeldAcrossTimerTicks(); FaultsAndStaleCommands(); ResourcesAndReplay();
     ProductCaptureBoundaries(); ProductWheelsAndRecording(); ProductGenerationsAndRemoval();
+    RemoteClicks(); RemoteMovementAndRawDuplicates(); RemoteWheelAndCancellation();
     total += checks; return failures;
 }

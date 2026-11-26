@@ -21,6 +21,7 @@ struct CaptureNative {
     std::uint32_t (*heldButtons)(void*){};
     bool (*desktopActive)(void*){};
     BOOL (*post)(void*,HWND,UINT,WPARAM,LPARAM){};
+    bool (*remoteSession)(void*){};
 };
 CaptureNative RealCaptureNative() noexcept;
 Result ReplayButtons(const CaptureNative&) noexcept;
@@ -63,6 +64,8 @@ private:
     bool Bound(Button,std::uint32_t) const noexcept;
     bool WheelEligible(std::int64_t) const noexcept;
     bool ProductHook(WPARAM,const MSLLHOOKSTRUCT&) noexcept;
+    void RemoteInput(WPARAM,const MSLLHOOKSTRUCT&,std::uint64_t now) noexcept;
+    void SendWheel(const CaptureTarget&,std::uint64_t device,std::int64_t x,std::int64_t y,std::uint64_t now) noexcept;
     void CancelWheel(CancelReason,std::uint64_t) noexcept;
     void ProductRaw(const RAWINPUT&) noexcept;
     CaptureConfig config_;
@@ -85,6 +88,8 @@ private:
     std::uint64_t productSession_{},gateSession_{},sessionCounter_{},ordinarySequence_{};
     std::uint64_t generation_{1},activeGeneration_{1};
     bool ordinaryWheel_{};
+    bool remoteInput_{};
+    POINT remotePosition_{};
     CaptureTarget ordinaryTarget_;
     std::uint64_t ordinaryDevice_{};
     DWORD wheelBarrier_{};

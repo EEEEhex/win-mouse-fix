@@ -1,6 +1,7 @@
 #include "MouseCapture.h"
 #include <new>
 #include <array>
+#include <wtsapi32.h>
 
 namespace wmf::platform {
 namespace {
@@ -8,6 +9,8 @@ constexpr wchar_t CaptureClass[] = L"WinMouseFix.RawMouseCapture.v2";
 constexpr UINT CommandMessage = WM_APP+41;
 constexpr UINT BindingMessage = WM_APP+42;
 constexpr UINT RecordingMessage = WM_APP+43;
+// RDP supplies one session-level pointer without a physical Raw Input device.
+constexpr std::uint64_t RemotePointerDevice = UINT64_MAX;
 thread_local MouseCapture* currentCapture{};
 std::atomic<DWORD> registeredOwner{};
 std::uint64_t Frequency() noexcept { LARGE_INTEGER f{}; QueryPerformanceFrequency(&f); return static_cast<std::uint64_t>(f.QuadPart); }
@@ -77,10 +80,18 @@ BOOL Destroy(void*,HWND w) {
 BOOL Timer(void*,HWND w,bool add) { return add ? SetTimer(w,1,10,nullptr) != 0 : KillTimer(w,1); }
 UINT Send(void*,UINT count,const INPUT* inputs) { return SendInput(count,const_cast<INPUT*>(inputs),sizeof(INPUT)); }
 DWORD Error(void*) { return GetLastError(); }
+bool RemoteSession(void*) {
+    LPWSTR buffer{}; DWORD bytes{};
+    if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE,WTS_CURRENT_SESSION,WTSClientProtocolType,&buffer,&bytes))
+        return GetSystemMetrics(SM_REMOTESESSION) != 0;
+    const bool remote = buffer && bytes >= sizeof(USHORT) && *reinterpret_cast<const USHORT*>(buffer) != 0;
+    WTSFreeMemory(buffer);
+    return remote;
+}
 }
 CaptureNative RealCaptureNative() noexcept {
     CaptureNative api{nullptr,Create,Register,Install,Remove,Destroy,Timer,Send,Error};
-    api.registerKeyboard = RegisterKeyboard; api.post = PostMessageAdapter; return api;
+    api.registerKeyboard = RegisterKeyboard; api.post = PostMessageAdapter; api.remoteSession = RemoteSession; return api;
 }
 MouseCapture::MouseCapture(CaptureConfig config, CaptureNative api) noexcept
     : config_(config), api_(api), owner_(GetCurrentThreadId()), integrity_(Integrity(GetCurrentProcessId())), frequency_(Frequency()),
@@ -139,7 +150,9 @@ Result MouseCapture::Open() noexcept {
         r = {Status::NativeFailure,api_.error(api_.context)};
         const auto cleanup = Close(); if (!cleanup) r.cleanupError = cleanup.nativeError; return r;
     }
-    keyboardRegistered_ = product_; RefreshTarget(); desktopActive_ = DesktopActive(); return {};
+    keyboardRegistered_ = product_;
+    remoteInput_ = product_ && api_.remoteSession && api_.remoteSession(api_.context);
+    RefreshTarget(); desktopActive_ = DesktopActive(); return {};
 }
 Result MouseCapture::Close() noexcept {
     if (GetCurrentThreadId() != owner_) return {Status::WrongThread};
@@ -317,7 +330,10 @@ bool MouseCapture::ProductHook(WPARAM kind,const MSLLHOOKSTRUCT& data) noexcept 
     if (takeover) { if (data.time) wheelBarrier_ = data.time; CancelWheel(CancelReason::OtherInput,now); }
     if (kind == WM_MOUSEMOVE && ordinaryWheel_ && (data.pt.x != ordinaryTarget_.x || data.pt.y != ordinaryTarget_.y)) CancelWheel(CancelReason::TargetChanged,now);
     if (gate_.Owned() && !ValidTarget(gate_.Target())) gate_.Cancel(CancelReason::TargetChanged,now);
-    if (kind == WM_MOUSEMOVE) return gate_.Move();
+    if (kind == WM_MOUSEMOVE) {
+        if (remoteInput_ && gate_.Owned()) RemoteInput(kind,data,now);
+        return gate_.Move();
+    }
     const auto button = HookButton(kind,data);
     const bool down = kind == WM_XBUTTONDOWN || kind == WM_MBUTTONDOWN;
     const bool up = kind == WM_XBUTTONUP || kind == WM_MBUTTONUP;
@@ -326,6 +342,7 @@ bool MouseCapture::ProductHook(WPARAM kind,const MSLLHOOKSTRUCT& data) noexcept 
         const bool passed = (passedButtons_ & ButtonBit(button)) != 0;
         passedButtons_ &= ~ButtonBit(button);
         if (button != selected_) return false;
+        if (remoteInput_ && !passed && gate_.Owned()) RemoteInput(kind,data,now);
         const auto blocked = gate_.Up(now);
         if (!gate_.Owned()) currentSession_ = 0;
         return !passed && blocked;
@@ -357,6 +374,7 @@ bool MouseCapture::ProductHook(WPARAM kind,const MSLLHOOKSTRUCT& data) noexcept 
         // pointer normally (including acceleration, screen edges and monitors).
         activeFreeze_ = false;
         const auto blocked = gate_.Down(target,now,button,activeFreeze_);
+        if (blocked && remoteInput_) { remotePosition_ = data.pt; RemoteInput(kind,data,now); }
         if (!blocked) passedButtons_ |= ButtonBit(button);
         return blocked;
     }
@@ -364,21 +382,45 @@ bool MouseCapture::ProductHook(WPARAM kind,const MSLLHOOKSTRUCT& data) noexcept 
         const auto delta = static_cast<SHORT>(HIWORD(data.mouseData));
         if (gate_.Owned()) {
             if (!gate_.Canceled() && kind == WM_MOUSEWHEEL && WheelEligible(delta)) {
+                if (remoteInput_) RemoteInput(kind,data,now);
                 counters_.Add(CaptureMetric::BlockedWheels); return true;
             }
             gate_.Cancel(CancelReason::OtherInput,now); return false;
         }
         if (gate_.Enabled() && !recording_ && (productFlags_ & (WheelSourceValidated|ExplicitValidationProbe)) && bindings_.wheelMode != WheelMode::Off &&
-            !Modifiers() && !HeldButtons() && CurrentTarget().window) { counters_.Add(CaptureMetric::BlockedWheels); return true; }
+            !Modifiers() && !HeldButtons() && CurrentTarget().window) {
+            if (remoteInput_) SendWheel(CurrentTarget(),RemotePointerDevice,kind == WM_MOUSEHWHEEL ? delta : 0,kind == WM_MOUSEWHEEL ? delta : 0,now);
+            counters_.Add(CaptureMetric::BlockedWheels); return true;
+        }
         CancelWheel(CancelReason::OtherInput,now);
         return false;
     }
     if (kind == WM_LBUTTONDOWN || kind == WM_RBUTTONDOWN) gate_.Cancel(CancelReason::OtherInput,now);
     return false;
 }
+void MouseCapture::RemoteInput(WPARAM kind,const MSLLHOOKSTRUCT& data,std::uint64_t now) noexcept {
+    RawMousePacket packet; packet.device = RemotePointerDevice; packet.qpc = now; packet.button = selected_;
+    packet.down = kind == WM_XBUTTONDOWN || kind == WM_MBUTTONDOWN;
+    packet.up = kind == WM_XBUTTONUP || kind == WM_MBUTTONUP;
+    if (kind == WM_MOUSEMOVE) {
+        packet.dx = static_cast<std::int64_t>(data.pt.x)-remotePosition_.x;
+        packet.dy = static_cast<std::int64_t>(data.pt.y)-remotePosition_.y;
+        remotePosition_ = data.pt;
+    }
+    if (kind == WM_MOUSEWHEEL) packet.wheelY = static_cast<SHORT>(HIWORD(data.mouseData));
+    gate_.Raw(packet);
+}
+void MouseCapture::SendWheel(const CaptureTarget& target,std::uint64_t device,std::int64_t x,std::int64_t y,std::uint64_t now) noexcept {
+    InputEvent e; e.kind = InputKind::Wheel; e.session = ++sessionCounter_; e.sequence = 1;
+    e.firstQpc = e.lastQpc = now; e.device = device;
+    e.target = target.window; e.anchorX = target.x; e.anchorY = target.y; e.revision = bindings_.revision;
+    e.generation = generation_; e.wheelX = x; e.wheelY = y;
+    ordinaryWheel_ = true; ordinaryTarget_ = target; ordinaryDevice_ = device;
+    if (!productSink_(productContext_,&e)) Fault({Status::Busy});
+}
 void MouseCapture::ProductRaw(const RAWINPUT& raw) noexcept {
-    if (!raw.header.hDevice) return;
     if (raw.header.dwType == RIM_TYPEKEYBOARD) {
+        if (!raw.header.hDevice && !remoteInput_) return;
         if (raw.data.keyboard.ExtraInformation == ReplayMarker) return;
         const auto messageTime = static_cast<DWORD>(GetMessageTime());
         if (messageTime) wheelBarrier_ = messageTime;
@@ -391,7 +433,9 @@ void MouseCapture::ProductRaw(const RAWINPUT& raw) noexcept {
         if (gate_.Owned()) { counters_.Add(CaptureMetric::KeyboardTakeovers); gate_.Cancel(CancelReason::OtherInput,Now()); }
         return;
     }
-    if (raw.header.dwType != RIM_TYPEMOUSE || raw.data.mouse.ulExtraInformation == ReplayMarker) return;
+    // Remote mouse boundaries come exclusively from the Hook. A late Raw Input
+    // packet must never duplicate a click, movement or wheel already delivered.
+    if (remoteInput_ || !raw.header.hDevice || raw.header.dwType != RIM_TYPEMOUSE || raw.data.mouse.ulExtraInformation == ReplayMarker) return;
     const auto& m = raw.data.mouse; const auto flags = m.usButtonFlags; const auto now = Now();
     auto wheelY = (flags & RI_MOUSE_WHEEL) ? static_cast<std::int64_t>(static_cast<SHORT>(m.usButtonData)) : 0;
     auto wheelX = (flags & RI_MOUSE_HWHEEL) ? static_cast<std::int64_t>(static_cast<SHORT>(m.usButtonData)) : 0;
@@ -403,13 +447,7 @@ void MouseCapture::ProductRaw(const RAWINPUT& raw) noexcept {
         if (gate_.Enabled() && !recording_ && (productFlags_ & (WheelSourceValidated|ExplicitValidationProbe)) && bindings_.wheelMode != WheelMode::Off && !Modifiers() && !HeldButtons()) {
             const auto target = CurrentTarget();
             if (target.window && !(m.usFlags & MOUSE_MOVE_ABSOLUTE) && !(flags & ~(RI_MOUSE_WHEEL|RI_MOUSE_HWHEEL))) {
-                InputEvent e; e.kind = InputKind::Wheel; e.session = ++sessionCounter_; e.sequence = 1;
-                e.firstQpc = e.lastQpc = now; e.device = reinterpret_cast<std::uintptr_t>(raw.header.hDevice);
-                e.target = target.window; e.anchorX = target.x; e.anchorY = target.y; e.revision = bindings_.revision;
-                e.generation = generation_;
-                e.wheelX = wheelX; e.wheelY = wheelY;
-                ordinaryWheel_ = true; ordinaryTarget_ = target; ordinaryDevice_ = e.device;
-                if (!productSink_(productContext_,&e)) Fault({Status::Busy});
+                SendWheel(target,reinterpret_cast<std::uintptr_t>(raw.header.hDevice),wheelX,wheelY,now);
             }
         }
     }

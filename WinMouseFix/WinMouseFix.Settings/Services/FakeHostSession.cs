@@ -27,7 +27,7 @@ public sealed class FakeHostSession : IHostSession
         if (location is not ("appdata" or "program")) return Task.FromResult(Reply(false,"bad-request"));
         Status.Storage.Location = location; Status.Storage.NativeError = 0; return Task.FromResult(Reply());
     }
-    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.4" };
+    public UpdateStatus NextUpdate { get; set; } = new() { State = "current", Version = "2.1.5" };
     public Task<HostReply> ReadyAsync(CancellationToken cancellation = default) => Task.FromResult(Reply());
     public Task<HostReply> CheckUpdatesAsync(CancellationToken cancellation = default) {
         var id = Status.Update.CheckId+1;

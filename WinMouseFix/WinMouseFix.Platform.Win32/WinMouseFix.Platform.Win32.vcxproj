@@ -91,7 +91,7 @@
     <ClCompile Include="MouseCapture.cpp" />
     <ClCompile Include="DiscreteActions.cpp" />
   </ItemGroup>
-  <ItemDefinitionGroup><Link><AdditionalDependencies>advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup><Link><AdditionalDependencies>advapi32.lib;wtsapi32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DeviceSession.h" />
     <ClInclude Include="FrameClock.h" />
